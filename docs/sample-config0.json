@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "steam-service-by-display-name",
+      "description": "Stop Steam Client Service using its Control Panel name",
+      "enabled": true,
+      "conditions": [
+        { "field": "ServiceDisplayName", "op": "eq", "value": "Steam Client Service" }
+      ],
+      "action": "Stop"
+    },
+    {
+      "id": "steam-service-by-internal-name",
+      "description": "Same target matched by internal SCM name",
+      "enabled": false,
+      "conditions": [
+        { "field": "ServiceName", "op": "regex", "value": "^SteamClient.*" }
+      ],
+      "action": "Stop"
+    },
+    {
+      "id": "discord-helper",
+      "description": "Discord crash handler — plain process, not a service",
+      "enabled": true,
+      "conditions": [
+        { "field": "ProcessName", "op": "eq", "value": "DiscordCrashHandler" },
+        { "field": "ParentProcessName", "op": "neq", "value": "Discord" }
+      ],
+      "conditionLogic": "And",
+      "action": "Kill"
+    }
+  ],
+  "protected": [
+    "wuauserv", "WinDefend", "lsass"
+  ]
+}

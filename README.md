@@ -23,18 +23,31 @@ Many desktop applications (browsers, creative suites, gaming platforms, communic
 
 ## Phased Development
 
-### Phase 1 — Rule-Based Service & Process Management
+### Phase 0 — Rule-Based CLI
 
-A Windows Service with a companion CLI/tray application. The user maintains a predefined list of services and processes to target.
+A command-line tool the user runs on demand. The user maintains a predefined list of services and processes to target.
 
-- **Configuration store** — JSON file defining rules: service names, process names, fingerprint, conditions (e.g. "do not touch", “kill when parent app is not running”) 
+- **Configuration store** — JSON file defining rules: service names, process names, fingerprint, conditions (e.g. “do not touch”, “kill when parent app is not running”)
 - **Process fingerprinting** — Collect metadata (name, path, publisher, command-line args, resource profile, network connections) into a structured descriptor for each process
-- **Fuzzy matching** - Use regular expressions and expressions/logic against the fingerprint to allow easier process recognition when applications change over time
+- **Fuzzy matching** — Use regular expressions and expressions/logic against the fingerprint to allow easier process recognition when applications change over time
 - **Service monitor** — Enumerate running Windows services and processes via `System.Diagnostics` and `System.ServiceProcess`, build fingerprint, match against the rule list
 - **Action engine** — Stop services (`sc stop`), kill processes, or suspend them based on rule definitions
-- **User triggers** — CLI commands or tray-app buttons to run a sweep on demand, enable/disable rules, and view current status
+- **CLI commands**
+  - `config` — Display the current configuration and validate its syntax
+  - `list` — Enumerate all running processes and services, highlighting those matched by configuration rules
+  - `actions` — List the actions the engine would take based on current rules and running processes
+  - `execute` — Run all targeted actions and report the result of each
 - **Logging** — Structured logging (Serilog or `Microsoft.Extensions.Logging`) with rotation, recording every action taken and its outcome
 - **Safety guards** — Whitelist of critical Windows services that must never be touched; confirmation prompts for destructive actions; rollback capability to restart a stopped service
+
+### Phase 1 — Windows Service & Tray Application
+
+Moves the Phase 0 logic into a background Windows Service and adds a tray application as the user-facing interface. No new functional capabilities beyond what the CLI already provided.
+
+- **Windows Service host** — Wrap the existing engine in a `Microsoft.Extensions.Hosting.WindowsServices` host so it runs in the background without a console window
+- **Tray application** — System-tray icon with a context menu exposing the same operations the CLI offered: run a sweep on demand, enable/disable rules, view current status
+- **IPC channel** — Lightweight local communication (e.g. named pipe or local HTTP) between the tray app and the service so the tray can send commands and receive status updates
+- **Service installer** — Tooling to install, start, stop, and uninstall the Windows Service
 
 ### Phase 2 — Snapshot & Unknown Process Detection
 
