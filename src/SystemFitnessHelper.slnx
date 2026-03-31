@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="Core/Core.csproj" />
+  <Project Path="Cli/SystemFitnessHelper.Cli.csproj" />
+  <Project Path="..\tests\Core.Tests\SystemFitnessHelper.Core.Tests.csproj" />
+  <Project Path="..\tests\Cli.Tests\SystemFitnessHelper.Cli.Tests.csproj" />
 </Solution>
