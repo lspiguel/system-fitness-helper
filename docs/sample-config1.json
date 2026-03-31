@@ -1,9 +1,6 @@
 {
   "rules": [
 
-    { "id": "ashampoo-backup",            "description": "Ashampoo Backup Pro",                                       "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "ashbackuppb"       }], "action": "Stop" },
-    { "id": "ashampoo-livetuner",         "description": "Ashampoo LiveTuner 2 Service",                              "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "WO_LiveService2"   }], "action": "Stop" },
-
     { "id": "telemetry-diagtrack",        "description": "Connected User Experiences and Telemetry",                  "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "DiagTrack"         }], "action": "Stop" },
     { "id": "telemetry-dps",              "description": "Diagnostic Policy Service",                                 "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "DPS"               }], "action": "Stop" },
     { "id": "telemetry-wdisystemhost",    "description": "Diagnostic System Host",                                    "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "WdiSystemHost"     }], "action": "Stop" },

@@ -7,10 +7,6 @@
 echo Stopping unneeded services...
 echo.
 
-:: ---- Ashampoo Services ----
-net stop "ashbackuppb"           2>nul & echo [OK] Ashampoo Backup Pro
-net stop "WO_LiveService2"       2>nul & echo [OK] Ashampoo LiveTuner 2 Service
-
 :: ---- Telemetry / Diagnostics / Tracking ----
 net stop "DiagTrack"           2>nul & echo [OK] Connected User Experiences and Telemetry
 net stop "DPS"                 2>nul & echo [OK] Diagnostic Policy Service
