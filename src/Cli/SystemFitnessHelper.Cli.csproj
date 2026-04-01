@@ -1,11 +1,21 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <AssemblyName>sfh</AssemblyName>
+    <AssemblyName>sfhcli</AssemblyName>
     <RootNamespace>SystemFitnessHelper.Cli</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="rules.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="rules.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
