@@ -115,7 +115,7 @@ public static class ExecuteCommand
                 Log.Information(
                     "Action {Action} on {Process} (rule: {Rule}): {Outcome}",
                     plan.Action, plan.Fingerprint.ProcessName, plan.RuleId,
-                    result.Success ? "Success" : "Failed");
+                    result.Success ? "Success" : $"Failed - {result.Message}");
             }
 
             if (!result.Success) anyFailed = true;

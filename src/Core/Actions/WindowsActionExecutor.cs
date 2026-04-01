@@ -44,7 +44,7 @@ public sealed class WindowsActionExecutor : IActionExecutor
         }
         catch (Exception ex)
         {
-            return ActionResult.Fail($"Failed to stop service '{serviceName}': {ex.Message}", ex);
+            return ActionResult.Fail($"Failed to stop service '{serviceName}': {GetFullMessage(ex)}", ex);
         }
     }
 
@@ -58,7 +58,7 @@ public sealed class WindowsActionExecutor : IActionExecutor
         }
         catch (Exception ex)
         {
-            return ActionResult.Fail($"Failed to kill process {processId}: {ex.Message}", ex);
+            return ActionResult.Fail($"Failed to kill process {processId}: {GetFullMessage(ex)}", ex);
         }
     }
 
@@ -75,8 +75,21 @@ public sealed class WindowsActionExecutor : IActionExecutor
         }
         catch (Exception ex)
         {
-            return ActionResult.Fail($"Failed to suspend process {processId}: {ex.Message}", ex);
+            return ActionResult.Fail($"Failed to suspend process {processId}: {GetFullMessage(ex)}", ex);
         }
+    }
+
+    private static string GetFullMessage(Exception ex)
+    {
+        var sb = new System.Text.StringBuilder();
+        var current = ex;
+        while (current is not null)
+        {
+            if (sb.Length > 0) sb.Append(" ---> ");
+            sb.Append(current.Message);
+            current = current.InnerException;
+        }
+        return sb.ToString();
     }
 
     [DllImport("ntdll.dll")]
