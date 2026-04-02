@@ -1,9 +1,15 @@
 namespace SystemFitnessHelper.Actions;
 
+/// <summary>
+/// Represents the outcome of executing an <see cref="ActionPlan"/>.
+/// Use the static factory methods <see cref="Ok"/> and <see cref="Fail"/> to construct instances.
+/// </summary>
 public sealed class ActionResult
 {
     public bool Success { get; init; }
+
     public string Message { get; init; } = string.Empty;
+
     public Exception? Exception { get; init; }
 
     public static ActionResult Ok(string message)

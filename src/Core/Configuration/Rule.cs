@@ -1,5 +1,9 @@
 namespace SystemFitnessHelper.Configuration;
 
+/// <summary>
+/// Defines a single matching rule: a set of <see cref="FingerprintCondition"/> predicates combined
+/// by <see cref="ConditionLogic"/> ("And" or "Or"), and the <see cref="ActionType"/> to apply when matched.
+/// </summary>
 public sealed class Rule
 {
     public string Id { get; init; } = string.Empty;

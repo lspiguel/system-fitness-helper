@@ -12,6 +12,11 @@ using SystemFitnessHelper.Safety;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
+/// <summary>
+/// Implements the <c>execute</c> CLI sub-command, which scans processes, evaluates rules,
+/// and — after an optional confirmation prompt — applies each allowed action via <see cref="IActionExecutor"/>.
+/// Re-launches itself elevated via UAC if the process is not already running as administrator.
+/// </summary>
 public static class ExecuteCommand
 {
     public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)

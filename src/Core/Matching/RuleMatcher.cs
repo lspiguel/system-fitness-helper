@@ -3,6 +3,11 @@ using SystemFitnessHelper.Fingerprinting;
 
 namespace SystemFitnessHelper.Matching;
 
+/// <summary>
+/// Default implementation of <see cref="IRuleMatcher"/>.
+/// Iterates all enabled rules and evaluates each fingerprint against them;
+/// condition predicates within a rule are combined using the rule's <c>ConditionLogic</c> ("And" or "Or").
+/// </summary>
 public sealed class RuleMatcher : IRuleMatcher
 {
     public IReadOnlyList<MatchResult> Match(

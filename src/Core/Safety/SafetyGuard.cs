@@ -2,6 +2,11 @@ using SystemFitnessHelper.Actions;
 
 namespace SystemFitnessHelper.Safety;
 
+/// <summary>
+/// Guards against accidental or malicious targeting of protected processes and services.
+/// Checks both the hard-coded lists in <see cref="ProtectedServices"/> and the
+/// user-defined protected service names supplied at construction time.
+/// </summary>
 public sealed class SafetyGuard
 {
     private readonly IReadOnlySet<string> _userProtectedServiceNames;

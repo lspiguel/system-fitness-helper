@@ -3,6 +3,11 @@ using System.Text.Json.Serialization;
 
 namespace SystemFitnessHelper.Configuration;
 
+/// <summary>
+/// Loads and validates a <see cref="RuleSet"/> from a JSON file.
+/// Discovery order when no explicit path is given: <c>%APPDATA%\SystemFitnessHelper\rules.json</c>,
+/// then <c>rules.json</c> next to the executable.
+/// </summary>
 public static class ConfigurationLoader
 {
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -4,6 +4,10 @@ using SystemFitnessHelper.Configuration;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
+/// <summary>
+/// Implements the <c>config</c> CLI sub-command, which loads the rule file, validates it,
+/// and renders the parsed rules together with any validation errors or warnings to the console.
+/// </summary>
 public static class ConfigCommand
 {
     public static Command Create(IServiceProvider _, Option<FileInfo?> configOption)

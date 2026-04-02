@@ -1,5 +1,10 @@
 namespace SystemFitnessHelper.Safety;
 
+/// <summary>
+/// Hard-coded lists of Windows service and process names that must never be targeted,
+/// regardless of what the user's rule set requests.
+/// These act as a last-resort safety net beneath the user-configurable protected list in <see cref="SafetyGuard"/>.
+/// </summary>
 public static class ProtectedServices
 {
     /// <summary>Service names that must never be touched, regardless of rules.</summary>

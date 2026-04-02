@@ -6,6 +6,11 @@ using SystemFitnessHelper.Matching;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
+/// <summary>
+/// Implements the <c>list</c> CLI sub-command, which enumerates all running processes and
+/// highlights matched ones in yellow (non-destructive action) or red (Kill/Stop/Suspend).
+/// No actions are executed.
+/// </summary>
 public static class ListCommand
 {
     public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)

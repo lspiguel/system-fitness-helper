@@ -5,6 +5,11 @@ using SystemFitnessHelper.Configuration;
 
 namespace SystemFitnessHelper.Actions;
 
+/// <summary>
+/// Windows implementation of <see cref="IActionExecutor"/>.
+/// Dispatches Stop (via SCM), Kill (via <c>Process.Kill</c>), and Suspend
+/// (via the native <c>NtSuspendProcess</c> syscall) actions.
+/// </summary>
 public sealed class WindowsActionExecutor : IActionExecutor
 {
     private static readonly TimeSpan ServiceStopTimeout = TimeSpan.FromSeconds(30);

@@ -4,6 +4,12 @@ using System.ServiceProcess;
 
 namespace SystemFitnessHelper.Fingerprinting;
 
+/// <summary>
+/// Windows implementation of <see cref="IProcessScanner"/>.
+/// Combines <c>Process.GetProcesses()</c> with two WMI queries
+/// (<c>Win32_Process</c> for command-line and parent PID, <c>Win32_Service</c> for service metadata)
+/// to build a rich <see cref="ProcessFingerprint"/> for every running process.
+/// </summary>
 public sealed class WindowsProcessScanner : IProcessScanner
 {
     public IReadOnlyList<ProcessFingerprint> Scan()

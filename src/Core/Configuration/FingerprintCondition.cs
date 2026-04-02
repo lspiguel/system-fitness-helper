@@ -3,6 +3,10 @@ using SystemFitnessHelper.Fingerprinting;
 
 namespace SystemFitnessHelper.Configuration;
 
+/// <summary>
+/// A single predicate that evaluates a named field of a <see cref="SystemFitnessHelper.Fingerprinting.ProcessFingerprint"/>
+/// against a value using a comparison operator (eq, neq, regex, gt, lt).
+/// </summary>
 public sealed class FingerprintCondition
 {
     public string Field { get; init; } = string.Empty;

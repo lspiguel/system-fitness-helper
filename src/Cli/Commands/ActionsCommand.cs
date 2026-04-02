@@ -1,5 +1,5 @@
-using Spectre.Console;
 using System.CommandLine;
+using Spectre.Console;
 using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
@@ -8,6 +8,11 @@ using SystemFitnessHelper.Safety;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
+/// <summary>
+/// Implements the <c>actions</c> CLI sub-command, which performs a dry-run: it scans processes,
+/// evaluates rules, and displays what actions <em>would</em> be taken (including safety-guard blocks)
+/// without executing anything.
+/// </summary>
 public static class ActionsCommand
 {
     public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)

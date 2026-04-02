@@ -1,5 +1,9 @@
 namespace SystemFitnessHelper.Configuration;
 
+/// <summary>
+/// Accumulates errors and warnings produced during rule-set validation.
+/// <see cref="IsValid"/> is <c>true</c> only when no errors have been added.
+/// </summary>
 public sealed class ValidationResult
 {
     private readonly List<string> _errors = [];

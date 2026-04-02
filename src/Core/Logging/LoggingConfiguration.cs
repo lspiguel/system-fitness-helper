@@ -3,6 +3,11 @@ using Serilog.Events;
 
 namespace SystemFitnessHelper.Logging;
 
+/// <summary>
+/// Bootstraps the Serilog logger used throughout the application.
+/// Writes structured logs to both the console and a rolling daily file under
+/// <c>%APPDATA%\SystemFitnessHelper\logs\</c>; verbosity switches between Information and Debug.
+/// </summary>
 public static class LoggingConfiguration
 {
     public static void Configure(bool verbose = false)
