@@ -57,12 +57,21 @@ public static class ConfigCommand
             AnsiConsole.Write(table);
 
             if (ruleSet.Protected.Count > 0)
+            {
                 AnsiConsole.MarkupLine(
                     $"[grey]Protected services: {Markup.Escape(string.Join(", ", ruleSet.Protected))}[/]");
+            }
         }
 
-        foreach (var err in validation.Errors) AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
-        foreach (var warn in validation.Warnings) AnsiConsole.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warn)}");
+        foreach (var err in validation.Errors)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
+        }
+
+        foreach (var warn in validation.Warnings)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warn)}");
+        }
 
         return Task.FromResult(validation.IsValid ? 0 : 2);
     }

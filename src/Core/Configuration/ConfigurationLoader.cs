@@ -51,17 +51,23 @@ public static class ConfigurationLoader
     public static string? DiscoverPath(string? explicitPath)
     {
         if (explicitPath is not null)
+        {
             return File.Exists(explicitPath) ? explicitPath : null;
+        }
 
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "SystemFitnessHelper", "rules.json");
         if (File.Exists(appData))
+        {
             return appData;
+        }
 
         var nextToExe = Path.Combine(AppContext.BaseDirectory, "rules.json");
         if (File.Exists(nextToExe))
+        {
             return nextToExe;
+        }
 
         return null;
     }
@@ -80,18 +86,26 @@ public static class ConfigurationLoader
             }
 
             if (!seenIds.Add(rule.Id))
+            {
                 validation.AddError($"Duplicate rule ID: '{rule.Id}'.");
+            }
 
             if (rule.Conditions.Count == 0)
+            {
                 validation.AddWarning($"Rule '{rule.Id}' has no conditions and will never match.");
+            }
 
             foreach (var condition in rule.Conditions)
             {
                 if (string.IsNullOrWhiteSpace(condition.Field))
+                {
                     validation.AddError($"Rule '{rule.Id}': a condition is missing the 'field' property.");
+                }
 
                 if (!knownOps.Contains(condition.Op.ToLowerInvariant()))
+                {
                     validation.AddWarning($"Rule '{rule.Id}': unknown operator '{condition.Op}'.");
+                }
             }
 
             if (rule.Action == ActionType.Kill)
@@ -99,8 +113,10 @@ public static class ConfigurationLoader
                 var targetsServiceField = rule.Conditions.Any(c =>
                     c.Field.ToLowerInvariant() is "servicename" or "servicedisplayname");
                 if (targetsServiceField)
+                {
                     validation.AddWarning(
                         $"Rule '{rule.Id}' uses Kill on a service-targeted rule. Use Stop instead for services.");
+                }
             }
         }
     }

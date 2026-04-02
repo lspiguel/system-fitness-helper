@@ -19,8 +19,8 @@ public static class ListCommand
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
-            var scanner    = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
-            var matcher    = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
+            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
+            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
             context.ExitCode = await HandleAsync(configFile?.FullName, scanner, matcher);
         });
         return cmd;
@@ -42,14 +42,17 @@ public static class ListCommand
         if (!validation.IsValid || ruleSet is null)
         {
             foreach (var err in validation.Errors)
+            {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
+            }
+
             return Task.FromResult(2);
         }
 
-        var fingerprints    = scanner.Scan();
-        var matches         = matcher.Match(fingerprints, ruleSet);
-        var matchedSet      = matches.Select(m => m.Fingerprint).ToHashSet();
-        var destructiveSet  = matches
+        var fingerprints = scanner.Scan();
+        var matches = matcher.Match(fingerprints, ruleSet);
+        var matchedSet = matches.Select(m => m.Fingerprint).ToHashSet();
+        var destructiveSet = matches
             .Where(m => m.Rule.Action is ActionType.Kill or ActionType.Stop or ActionType.Suspend)
             .Select(m => m.Fingerprint)
             .ToHashSet();

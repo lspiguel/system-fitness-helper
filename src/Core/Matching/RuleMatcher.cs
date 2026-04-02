@@ -20,16 +20,21 @@ public sealed class RuleMatcher : IRuleMatcher
             foreach (var rule in ruleSet.Rules.Where(r => r.Enabled))
             {
                 if (Matches(fp, rule))
+                {
                     results.Add(new MatchResult(fp, rule));
+                }
             }
         }
+
         return results;
     }
 
     private static bool Matches(ProcessFingerprint fp, Rule rule)
     {
         if (rule.Conditions.Count == 0)
+        {
             return false;
+        }
 
         return rule.ConditionLogic.ToLowerInvariant() switch
         {

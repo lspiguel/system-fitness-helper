@@ -94,7 +94,10 @@ public static class ExecuteCommand
         if (!validation.IsValid || ruleSet is null)
         {
             foreach (var err in validation.Errors)
+            {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
+            }
+
             return Task.FromResult(2);
         }
 
@@ -165,7 +168,10 @@ public static class ExecuteCommand
                     result.Success ? "Success" : $"Failed - {result.Message}");
             }
 
-            if (!result.Success) anyFailed = true;
+            if (!result.Success)
+            {
+                anyFailed = true;
+            }
 
             resultTable.AddRow(
                 Markup.Escape(plan.Fingerprint.ProcessName),

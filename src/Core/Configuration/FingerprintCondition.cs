@@ -46,7 +46,10 @@ public sealed class FingerprintCondition
     private static int CompareNumeric(string? fieldValue, string conditionValue)
     {
         if (!long.TryParse(fieldValue, out var fv) || !long.TryParse(conditionValue, out var cv))
+        {
             return 0;
+        }
+
         return fv.CompareTo(cv);
     }
 }

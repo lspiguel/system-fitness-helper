@@ -45,7 +45,10 @@ public static class ActionsCommand
         if (!validation.IsValid || ruleSet is null)
         {
             foreach (var err in validation.Errors)
+            {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
+            }
+
             return Task.FromResult(2);
         }
 

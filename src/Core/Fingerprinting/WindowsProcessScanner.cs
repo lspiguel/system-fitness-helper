@@ -93,7 +93,10 @@ public sealed class WindowsProcessScanner : IProcessScanner
             foreach (ManagementObject mo in searcher.Get())
             {
                 if (mo["ProcessId"] is not object pidObj)
+                {
                     continue;
+                }
+
                 var pid = Convert.ToInt32(pidObj);
                 var commandLine = mo["CommandLine"]?.ToString();
                 var parentPid = mo["ParentProcessId"] is object ppObj
@@ -103,6 +106,7 @@ public sealed class WindowsProcessScanner : IProcessScanner
             }
         }
         catch { /* WMI unavailable */ }
+
         return result;
     }
 
@@ -116,7 +120,10 @@ public sealed class WindowsProcessScanner : IProcessScanner
             foreach (ManagementObject mo in searcher.Get())
             {
                 if (mo["ProcessId"] is not object pidObj)
+                {
                     continue;
+                }
+
                 var pid = Convert.ToInt32(pidObj);
                 var name = mo["Name"]?.ToString() ?? string.Empty;
                 var displayName = mo["DisplayName"]?.ToString() ?? string.Empty;
@@ -134,10 +141,12 @@ public sealed class WindowsProcessScanner : IProcessScanner
                     list = [];
                     result[pid] = list;
                 }
+
                 list.Add(new ServiceInfo(name, displayName, status));
             }
         }
         catch { /* WMI or ServiceController unavailable */ }
+
         return result;
     }
 

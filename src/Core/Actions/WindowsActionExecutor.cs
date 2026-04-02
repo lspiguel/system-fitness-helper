@@ -19,12 +19,16 @@ public sealed class WindowsActionExecutor : IActionExecutor
         var fp = plan.Fingerprint;
 
         if (fp.IsService && plan.Action == ActionType.Kill)
+        {
             return ActionResult.Fail(
                 $"Cannot Kill service '{fp.ServiceName}'. Use Stop instead to let SCM clean up gracefully.");
+        }
 
         if (fp.IsService && plan.Action == ActionType.Suspend)
+        {
             return ActionResult.Fail(
                 $"Cannot Suspend service '{fp.ServiceName}'. Services must be stopped through SCM.");
+        }
 
         return plan.Action switch
         {
@@ -42,7 +46,10 @@ public sealed class WindowsActionExecutor : IActionExecutor
         {
             using var sc = new ServiceController(serviceName);
             if (sc.Status == ServiceControllerStatus.Stopped)
+            {
                 return ActionResult.Ok($"Service '{serviceName}' is already stopped.");
+            }
+
             sc.Stop();
             sc.WaitForStatus(ServiceControllerStatus.Stopped, ServiceStopTimeout);
             return ActionResult.Ok($"Service '{serviceName}' stopped successfully.");
@@ -74,8 +81,11 @@ public sealed class WindowsActionExecutor : IActionExecutor
             using var process = Process.GetProcessById(processId);
             var ntstatus = NtSuspendProcess(process.Handle);
             if (ntstatus < 0)
+            {
                 return ActionResult.Fail(
                     $"NtSuspendProcess failed with NTSTATUS 0x{ntstatus:X8} for process {processId}.");
+            }
+
             return ActionResult.Ok($"Process {processId} suspended.");
         }
         catch (Exception ex)
@@ -90,10 +100,15 @@ public sealed class WindowsActionExecutor : IActionExecutor
         var current = ex;
         while (current is not null)
         {
-            if (sb.Length > 0) sb.Append(" ---> ");
+            if (sb.Length > 0)
+            {
+                sb.Append(" ---> ");
+            }
+
             sb.Append(current.Message);
             current = current.InnerException;
         }
+
         return sb.ToString();
     }
 
