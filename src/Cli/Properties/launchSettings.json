@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SystemFitnessHelper.Cli": {
+      "commandName": "Project",
+      "commandLineArgs": "execute"
+    }
+  }
+}

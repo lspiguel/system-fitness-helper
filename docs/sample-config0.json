@@ -3,18 +3,18 @@
     {
       "id": "steam-service-by-display-name",
       "description": "Stop Steam Client Service using its Control Panel name",
-      "enabled": true,
+      "enabled": false,
       "conditions": [
         { "field": "ServiceDisplayName", "op": "eq", "value": "Steam Client Service" }
       ],
       "action": "Stop"
     },
     {
-      "id": "steam-service-by-internal-name",
-      "description": "Same target matched by internal SCM name",
-      "enabled": false,
+      "id": "ashbackuppb",
+      "description": "ashampoo backup service",
+      "enabled": true,
       "conditions": [
-        { "field": "ServiceName", "op": "regex", "value": "^SteamClient.*" }
+        { "field": "ServiceName", "op": "eq", "value": "ashbackuppb" }
       ],
       "action": "Stop"
     },
