@@ -20,14 +20,12 @@ public sealed class WindowsActionExecutor : IActionExecutor
 
         if (fp.IsService && plan.Action == ActionType.Kill)
         {
-            return ActionResult.Fail(
-                $"Cannot Kill service '{fp.ServiceName}'. Use Stop instead to let SCM clean up gracefully.");
+            return ActionResult.Fail($"Cannot Kill service '{fp.ServiceName}'. Use Stop instead to let SCM clean up gracefully.");
         }
 
         if (fp.IsService && plan.Action == ActionType.Suspend)
         {
-            return ActionResult.Fail(
-                $"Cannot Suspend service '{fp.ServiceName}'. Services must be stopped through SCM.");
+            return ActionResult.Fail($"Cannot Suspend service '{fp.ServiceName}'. Services must be stopped through SCM.");
         }
 
         return plan.Action switch
