@@ -39,9 +39,9 @@ public static class ConfigCommand
 
             foreach (var rule in ruleSet.Rules)
             {
-                var conditions   = string.Join(", ", rule.Conditions.Select(c => $"{c.Field} {c.Op} '{c.Value}'"));
-                var enabledMark  = rule.Enabled ? "[green]✓[/]" : "[grey]✗[/]";
-                var actionColor  = rule.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
+                var conditions = string.Join(", ", rule.Conditions.Select(c => $"{c.Field} {c.Op} '{c.Value}'"));
+                var enabledMark = rule.Enabled ? "[green]✓[/]" : "[grey]✗[/]";
+                var actionColor = rule.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
                 table.AddRow(
                     Markup.Escape(rule.Id),
                     enabledMark,
@@ -57,8 +57,8 @@ public static class ConfigCommand
                     $"[grey]Protected services: {Markup.Escape(string.Join(", ", ruleSet.Protected))}[/]");
         }
 
-        foreach (var err  in validation.Errors)   AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
-        foreach (var warn in validation.Warnings)  AnsiConsole.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warn)}");
+        foreach (var err in validation.Errors) AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
+        foreach (var warn in validation.Warnings) AnsiConsole.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warn)}");
 
         return Task.FromResult(validation.IsValid ? 0 : 2);
     }

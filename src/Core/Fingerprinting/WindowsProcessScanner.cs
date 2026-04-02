@@ -8,9 +8,9 @@ public sealed class WindowsProcessScanner : IProcessScanner
 {
     public IReadOnlyList<ProcessFingerprint> Scan()
     {
-        var wmiData   = QueryWmiProcessData();
-        var byPid     = QueryRunningServices();
-        var results   = new List<ProcessFingerprint>();
+        var wmiData = QueryWmiProcessData();
+        var byPid = QueryRunningServices();
+        var results = new List<ProcessFingerprint>();
 
         foreach (var process in Process.GetProcesses())
         {
@@ -39,33 +39,33 @@ public sealed class WindowsProcessScanner : IProcessScanner
                     foreach (var svc in services)
                     {
                         results.Add(new ProcessFingerprint(
-                            ProcessId:          pid,
-                            ProcessName:        process.ProcessName,
-                            ExecutablePath:     executablePath,
-                            CommandLine:        wmi?.CommandLine,
-                            Publisher:          publisher,
-                            WorkingSetBytes:    process.WorkingSet64,
-                            ParentProcessName:  parentName,
-                            IsService:          true,
-                            ServiceName:        svc.Name,
+                            ProcessId: pid,
+                            ProcessName: process.ProcessName,
+                            ExecutablePath: executablePath,
+                            CommandLine: wmi?.CommandLine,
+                            Publisher: publisher,
+                            WorkingSetBytes: process.WorkingSet64,
+                            ParentProcessName: parentName,
+                            IsService: true,
+                            ServiceName: svc.Name,
                             ServiceDisplayName: svc.DisplayName,
-                            ServiceStatus:      svc.Status));
+                            ServiceStatus: svc.Status));
                     }
                 }
                 else
                 {
                     results.Add(new ProcessFingerprint(
-                        ProcessId:          pid,
-                        ProcessName:        process.ProcessName,
-                        ExecutablePath:     executablePath,
-                        CommandLine:        wmi?.CommandLine,
-                        Publisher:          publisher,
-                        WorkingSetBytes:    process.WorkingSet64,
-                        ParentProcessName:  parentName,
-                        IsService:          false,
-                        ServiceName:        null,
+                        ProcessId: pid,
+                        ProcessName: process.ProcessName,
+                        ExecutablePath: executablePath,
+                        CommandLine: wmi?.CommandLine,
+                        Publisher: publisher,
+                        WorkingSetBytes: process.WorkingSet64,
+                        ParentProcessName: parentName,
+                        IsService: false,
+                        ServiceName: null,
                         ServiceDisplayName: null,
-                        ServiceStatus:      null));
+                        ServiceStatus: null));
                 }
             }
             catch
@@ -88,9 +88,9 @@ public sealed class WindowsProcessScanner : IProcessScanner
             {
                 if (mo["ProcessId"] is not object pidObj)
                     continue;
-                var pid        = Convert.ToInt32(pidObj);
+                var pid = Convert.ToInt32(pidObj);
                 var commandLine = mo["CommandLine"]?.ToString();
-                var parentPid  = mo["ParentProcessId"] is object ppObj
+                var parentPid = mo["ParentProcessId"] is object ppObj
                     ? (uint?)Convert.ToUInt32(ppObj)
                     : null;
                 result[pid] = new WmiProcessData(commandLine, parentPid);
@@ -111,8 +111,8 @@ public sealed class WindowsProcessScanner : IProcessScanner
             {
                 if (mo["ProcessId"] is not object pidObj)
                     continue;
-                var pid         = Convert.ToInt32(pidObj);
-                var name        = mo["Name"]?.ToString() ?? string.Empty;
+                var pid = Convert.ToInt32(pidObj);
+                var name = mo["Name"]?.ToString() ?? string.Empty;
                 var displayName = mo["DisplayName"]?.ToString() ?? string.Empty;
 
                 ServiceControllerStatus status = ServiceControllerStatus.Running;

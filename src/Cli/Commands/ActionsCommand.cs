@@ -16,8 +16,8 @@ public static class ActionsCommand
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
-            var scanner    = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
-            var matcher    = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
+            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
+            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
             context.ExitCode = await HandleAsync(configFile?.FullName, scanner, matcher);
         });
         return cmd;
@@ -63,7 +63,7 @@ public static class ActionsCommand
         foreach (var plan in plans)
         {
             var (allowed, reason) = actualGuard.IsAllowed(plan);
-            var actionColor       = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
+            var actionColor = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
             table.AddRow(
                 Markup.Escape(plan.Fingerprint.ProcessName),
                 Markup.Escape(plan.Fingerprint.ServiceName ?? string.Empty),

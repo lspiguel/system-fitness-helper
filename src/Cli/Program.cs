@@ -22,8 +22,8 @@ services.AddSingleton<SafetyGuard>();
 var sp = services.BuildServiceProvider();
 
 // Global options
-var configOption  = new Option<FileInfo?>(["--config", "-c"],  "Path to rules.json");
-var verboseOption = new Option<bool>     (["--verbose", "-v"], "Enable verbose (Debug) logging");
+var configOption = new Option<FileInfo?>(["--config", "-c"], "Path to rules.json");
+var verboseOption = new Option<bool>(["--verbose", "-v"], "Enable verbose (Debug) logging");
 
 var root = new RootCommand("sfh — System Fitness Helper: inspect and manage processes and services");
 root.AddGlobalOption(configOption);

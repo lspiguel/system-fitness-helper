@@ -22,10 +22,10 @@ public static class ExecuteCommand
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
-            var yes        = context.ParseResult.GetValueForOption(yesOption);
-            var scanner    = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
-            var matcher    = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
-            var executor   = (IActionExecutor)services.GetService(typeof(IActionExecutor))!;
+            var yes = context.ParseResult.GetValueForOption(yesOption);
+            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
+            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
+            var executor = (IActionExecutor)services.GetService(typeof(IActionExecutor))!;
             context.ExitCode = await HandleAsync(configFile?.FullName, yes, scanner, matcher, executor);
         });
         return cmd;
@@ -39,16 +39,16 @@ public static class ExecuteCommand
 
     private static int RelaunchAsAdmin()
     {
-        var exe     = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+        var exe = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
         var argParts = Environment.GetCommandLineArgs().Skip(1)
                            .Select(a => a.Contains(' ') ? $"\"{a}\"" : a);
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName       = exe,
-                Arguments      = string.Join(" ", argParts),
-                Verb           = "runas",
+                FileName = exe,
+                Arguments = string.Join(" ", argParts),
+                Verb = "runas",
                 UseShellExecute = true,
             };
             var proc = Process.Start(psi);
@@ -118,7 +118,7 @@ public static class ExecuteCommand
         foreach (var plan in plans)
         {
             var (allowed, reason) = actualGuard.IsAllowed(plan);
-            var actionColor       = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
+            var actionColor = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
             planTable.AddRow(
                 Markup.Escape(plan.Fingerprint.ProcessName),
                 Markup.Escape(plan.Fingerprint.ServiceName ?? string.Empty),
@@ -135,7 +135,7 @@ public static class ExecuteCommand
             return Task.FromResult(0);
         }
 
-        var anyFailed   = false;
+        var anyFailed = false;
         var resultTable = new Table().Border(TableBorder.Rounded);
         resultTable.AddColumn("Process");
         resultTable.AddColumn("Action");

@@ -24,10 +24,10 @@ public sealed class WindowsActionExecutor : IActionExecutor
         return plan.Action switch
         {
             ActionType.Stop when fp.IsService => StopService(fp.ServiceName!),
-            ActionType.Kill                   => KillProcess(fp.ProcessId),
-            ActionType.Suspend                => SuspendProcess(fp.ProcessId),
-            ActionType.None                   => ActionResult.Ok("No action specified."),
-            _                                 => ActionResult.Fail($"Unsupported action '{plan.Action}' for this target."),
+            ActionType.Kill => KillProcess(fp.ProcessId),
+            ActionType.Suspend => SuspendProcess(fp.ProcessId),
+            ActionType.None => ActionResult.Ok("No action specified."),
+            _ => ActionResult.Fail($"Unsupported action '{plan.Action}' for this target."),
         };
     }
 

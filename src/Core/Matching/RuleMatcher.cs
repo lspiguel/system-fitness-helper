@@ -29,7 +29,7 @@ public sealed class RuleMatcher : IRuleMatcher
         return rule.ConditionLogic.ToLowerInvariant() switch
         {
             "or" => rule.Conditions.Any(c => c.Evaluate(fp)),
-            _    => rule.Conditions.All(c => c.Evaluate(fp)),  // "And" is default
+            _ => rule.Conditions.All(c => c.Evaluate(fp)), // "And" is default
         };
     }
 }
