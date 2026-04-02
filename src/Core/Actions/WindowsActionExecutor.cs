@@ -1,3 +1,8 @@
+// <copyright file="WindowsActionExecutor.cs" company="Luciano Spiguel">
+// Copyright (c) Luciano Spiguel. All Rights Reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+// </copyright>
+
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;

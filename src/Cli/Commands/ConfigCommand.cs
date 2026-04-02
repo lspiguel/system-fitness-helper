@@ -1,3 +1,8 @@
+// <copyright file="ConfigCommand.cs" company="Luciano Spiguel">
+// Copyright (c) Luciano Spiguel. All Rights Reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+// </copyright>
+
 using Spectre.Console;
 using System.CommandLine;
 using SystemFitnessHelper.Configuration;

@@ -1,3 +1,8 @@
+// <copyright file="FingerprintCondition.cs" company="Luciano Spiguel">
+// Copyright (c) Luciano Spiguel. All Rights Reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+// </copyright>
+
 using System.Text.RegularExpressions;
 using SystemFitnessHelper.Fingerprinting;
 
@@ -10,7 +15,9 @@ namespace SystemFitnessHelper.Configuration;
 public sealed class FingerprintCondition
 {
     public string Field { get; init; } = string.Empty;
+
     public string Op { get; init; } = "eq";
+
     public string Value { get; init; } = string.Empty;
 
     public bool Evaluate(ProcessFingerprint fp)
