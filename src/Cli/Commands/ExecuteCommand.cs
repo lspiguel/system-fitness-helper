@@ -1,6 +1,9 @@
 using Serilog;
 using Spectre.Console;
 using System.CommandLine;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Security.Principal;
 using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
@@ -28,6 +31,37 @@ public static class ExecuteCommand
         return cmd;
     }
 
+    private static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static int RelaunchAsAdmin()
+    {
+        var exe     = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+        var argParts = Environment.GetCommandLineArgs().Skip(1)
+                           .Select(a => a.Contains(' ') ? $"\"{a}\"" : a);
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName       = exe,
+                Arguments      = string.Join(" ", argParts),
+                Verb           = "runas",
+                UseShellExecute = true,
+            };
+            var proc = Process.Start(psi);
+            proc?.WaitForExit();
+            return proc?.ExitCode ?? 1;
+        }
+        catch (Win32Exception)
+        {
+            AnsiConsole.MarkupLine("[red]Error:[/] Elevation was cancelled or denied.");
+            return 1;
+        }
+    }
+
     public static Task<int> HandleAsync(
         string? configPath,
         bool skipPrompt,
@@ -36,6 +70,12 @@ public static class ExecuteCommand
         IActionExecutor executor,
         SafetyGuard? guard = null)
     {
+        if (!IsElevated())
+        {
+            AnsiConsole.MarkupLine("[yellow]Not running as administrator. Requesting elevation...[/]");
+            return Task.FromResult(RelaunchAsAdmin());
+        }
+
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
         {
