@@ -10,8 +10,23 @@ namespace SystemFitnessHelper.Configuration;
 /// </summary>
 public enum ActionType
 {
+    /// <summary>
+    /// No action.
+    /// </summary>
     None,
+
+    /// <summary>
+    /// Stop service.
+    /// </summary>
     Stop,
+
+    /// <summary>
+    /// Kill process.
+    /// </summary>
     Kill,
+
+    /// <summary>
+    /// Suspend process (Windows only).
+    /// </summary>
     Suspend,
 }

@@ -12,4 +12,5 @@ namespace SystemFitnessHelper.Actions;
 /// Immutable value object (record) that pairs a matched <see cref="ProcessFingerprint"/> with the
 /// <see cref="ActionType"/> to execute and the ID of the rule that triggered it.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
 public sealed record ActionPlan(ProcessFingerprint Fingerprint, ActionType Action, string RuleId);

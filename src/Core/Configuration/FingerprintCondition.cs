@@ -22,20 +22,30 @@ public sealed class FingerprintCondition
 
     public bool Evaluate(ProcessFingerprint fp)
     {
-        var fieldValue = GetFieldValue(fp);
-        return Op.ToLowerInvariant() switch
+        var fieldValue = this.GetFieldValue(fp);
+        return this.Op.ToLowerInvariant() switch
         {
-            "eq" => string.Equals(fieldValue, Value, StringComparison.OrdinalIgnoreCase),
-            "neq" => !string.Equals(fieldValue, Value, StringComparison.OrdinalIgnoreCase),
-            "regex" => fieldValue != null && Regex.IsMatch(fieldValue, Value, RegexOptions.IgnoreCase),
-            "gt" => CompareNumeric(fieldValue, Value) > 0,
-            "lt" => CompareNumeric(fieldValue, Value) < 0,
+            "eq" => string.Equals(fieldValue, this.Value, StringComparison.OrdinalIgnoreCase),
+            "neq" => !string.Equals(fieldValue, this.Value, StringComparison.OrdinalIgnoreCase),
+            "regex" => fieldValue != null && Regex.IsMatch(fieldValue, this.Value, RegexOptions.IgnoreCase),
+            "gt" => CompareNumeric(fieldValue, this.Value) > 0,
+            "lt" => CompareNumeric(fieldValue, this.Value) < 0,
             _ => false,
         };
     }
 
+    private static int CompareNumeric(string? fieldValue, string conditionValue)
+    {
+        if (!long.TryParse(fieldValue, out var fv) || !long.TryParse(conditionValue, out var cv))
+        {
+            return 0;
+        }
+
+        return fv.CompareTo(cv);
+    }
+
     private string? GetFieldValue(ProcessFingerprint fp) =>
-        Field.ToLowerInvariant() switch
+        this.Field.ToLowerInvariant() switch
         {
             "processname" => fp.ProcessName,
             "executablepath" => fp.ExecutablePath,
@@ -49,14 +59,4 @@ public sealed class FingerprintCondition
             "isservice" => fp.IsService.ToString(),
             _ => null,
         };
-
-    private static int CompareNumeric(string? fieldValue, string conditionValue)
-    {
-        if (!long.TryParse(fieldValue, out var fv) || !long.TryParse(conditionValue, out var cv))
-        {
-            return 0;
-        }
-
-        return fv.CompareTo(cv);
-    }
 }

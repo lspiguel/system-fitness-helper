@@ -15,7 +15,7 @@ namespace SystemFitnessHelper.Configuration;
 /// </summary>
 public static class ConfigurationLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = new ()
     {
         PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() },
@@ -62,7 +62,9 @@ public static class ConfigurationLoader
 
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SystemFitnessHelper", "rules.json");
+            "SystemFitnessHelper",
+            "rules.json");
+
         if (File.Exists(appData))
         {
             return appData;

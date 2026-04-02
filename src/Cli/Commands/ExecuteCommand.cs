@@ -3,12 +3,12 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 // </copyright>
 
-using Serilog;
-using Spectre.Console;
 using System.CommandLine;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
+using Serilog;
+using Spectre.Console;
 using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
@@ -33,43 +33,12 @@ public static class ExecuteCommand
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
             var yes = context.ParseResult.GetValueForOption(yesOption);
-            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
-            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
-            var executor = (IActionExecutor)services.GetService(typeof(IActionExecutor))!;
+            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner)) !;
+            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher)) !;
+            var executor = (IActionExecutor)services.GetService(typeof(IActionExecutor)) !;
             context.ExitCode = await HandleAsync(configFile?.FullName, yes, scanner, matcher, executor);
         });
         return cmd;
-    }
-
-    private static bool IsElevated()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-    }
-
-    private static int RelaunchAsAdmin()
-    {
-        var exe = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
-        var argParts = Environment.GetCommandLineArgs().Skip(1)
-                           .Select(a => a.Contains(' ') ? $"\"{a}\"" : a);
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = exe,
-                Arguments = string.Join(" ", argParts),
-                Verb = "runas",
-                UseShellExecute = true,
-            };
-            var proc = Process.Start(psi);
-            proc?.WaitForExit();
-            return proc?.ExitCode ?? 1;
-        }
-        catch (Win32Exception)
-        {
-            AnsiConsole.MarkupLine("[red]Error:[/] Elevation was cancelled or denied.");
-            return 1;
-        }
     }
 
     public static Task<int> HandleAsync(
@@ -169,7 +138,9 @@ public static class ExecuteCommand
                 result = executor.Execute(plan);
                 Log.Information(
                     "Action {Action} on {Process} (rule: {Rule}): {Outcome}",
-                    plan.Action, plan.Fingerprint.ProcessName, plan.RuleId,
+                    plan.Action,
+                    plan.Fingerprint.ProcessName,
+                    plan.RuleId,
                     result.Success ? "Success" : $"Failed - {result.Message}");
             }
 
@@ -187,5 +158,36 @@ public static class ExecuteCommand
 
         AnsiConsole.Write(resultTable);
         return Task.FromResult(anyFailed ? 1 : 0);
+    }
+
+    private static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static int RelaunchAsAdmin()
+    {
+        var exe = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+        var argParts = Environment.GetCommandLineArgs().Skip(1)
+                           .Select(a => a.Contains(' ') ? $"\"{a}\"" : a);
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = string.Join(" ", argParts),
+                Verb = "runas",
+                UseShellExecute = true,
+            };
+            var proc = Process.Start(psi);
+            proc?.WaitForExit();
+            return proc?.ExitCode ?? 1;
+        }
+        catch (Win32Exception)
+        {
+            AnsiConsole.MarkupLine("[red]Error:[/] Elevation was cancelled or denied.");
+            return 1;
+        }
     }
 }

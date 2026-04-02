@@ -31,18 +31,37 @@ public sealed class WindowsProcessScanner : IProcessScanner
                 wmiData.TryGetValue(pid, out var wmi);
 
                 string? executablePath = null;
-                try { executablePath = process.MainModule?.FileName; } catch { /* access denied */ }
+                try
+                {
+                    executablePath = process.MainModule?.FileName;
+                }
+                catch
+                {
+                    /* access denied */
+                }
 
                 string? publisher = null;
                 if (executablePath is not null)
                 {
-                    try { publisher = FileVersionInfo.GetVersionInfo(executablePath).CompanyName; } catch { }
+                    try
+                    {
+                        publisher = FileVersionInfo.GetVersionInfo(executablePath).CompanyName;
+                    }
+                    catch
+                    {
+                    }
                 }
 
                 string? parentName = null;
                 if (wmi?.ParentProcessId is uint ppid)
                 {
-                    try { parentName = Process.GetProcessById((int)ppid).ProcessName; } catch { }
+                    try
+                    {
+                        parentName = Process.GetProcessById((int)ppid).ProcessName;
+                    }
+                    catch
+                    {
+                    }
                 }
 
                 if (byPid.TryGetValue(pid, out var services) && services.Count > 0)
@@ -110,7 +129,10 @@ public sealed class WindowsProcessScanner : IProcessScanner
                 result[pid] = new WmiProcessData(commandLine, parentPid);
             }
         }
-        catch { /* WMI unavailable */ }
+        catch
+        {
+            /* WMI unavailable */
+        }
 
         return result;
     }
@@ -139,7 +161,10 @@ public sealed class WindowsProcessScanner : IProcessScanner
                     using var sc = new ServiceController(name);
                     status = sc.Status;
                 }
-                catch { /* keep default Running */ }
+                catch
+                {
+                    /* keep default Running */
+                }
 
                 if (!result.TryGetValue(pid, out var list))
                 {
@@ -150,11 +175,17 @@ public sealed class WindowsProcessScanner : IProcessScanner
                 list.Add(new ServiceInfo(name, displayName, status));
             }
         }
-        catch { /* WMI or ServiceController unavailable */ }
+        catch
+        {
+            /* WMI or ServiceController unavailable */
+        }
 
         return result;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
     private sealed record WmiProcessData(string? CommandLine, uint? ParentProcessId);
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
     private sealed record ServiceInfo(string Name, string DisplayName, ServiceControllerStatus Status);
 }

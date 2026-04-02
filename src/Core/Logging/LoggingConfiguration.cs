@@ -19,7 +19,9 @@ public static class LoggingConfiguration
     {
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SystemFitnessHelper", "logs", "sfh-.log");
+            "SystemFitnessHelper",
+            "logs",
+            "sfh-.log");
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Is(verbose ? LogEventLevel.Debug : LogEventLevel.Information)
