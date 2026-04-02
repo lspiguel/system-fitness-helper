@@ -13,6 +13,25 @@ namespace SystemFitnessHelper.Cli.Tests.Commands;
 public sealed class ExecuteCommandTests
 {
     [Fact]
+    public async Task HandleAsync_NotElevated_ReturnsWithoutExecuting()
+    {
+        var executor = new Mock<IActionExecutor>();
+
+        var result = await ExecuteCommand.HandleAsync(
+            WriteTempConfig(),
+            skipPrompt: true,
+            new Mock<IProcessScanner>().Object,
+            new Mock<IRuleMatcher>().Object,
+            executor.Object,
+            guard: null,
+            isElevated: () => false,
+            relaunchAsAdmin: () => 42);
+
+        result.Should().Be(42);
+        executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_NonExistentConfig_Returns2()
     {
         var result = await ExecuteCommand.HandleAsync(
@@ -20,7 +39,8 @@ public sealed class ExecuteCommandTests
             skipPrompt: true,
             new Mock<IProcessScanner>().Object,
             new Mock<IRuleMatcher>().Object,
-            new Mock<IActionExecutor>().Object);
+            new Mock<IActionExecutor>().Object,
+            isElevated: () => true);
 
         result.Should().Be(2);
     }
@@ -37,7 +57,8 @@ public sealed class ExecuteCommandTests
         var executor = new Mock<IActionExecutor>();
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object);
+            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object,
+            isElevated: () => true);
 
         result.Should().Be(0);
         executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
@@ -59,7 +80,8 @@ public sealed class ExecuteCommandTests
         var guard    = new SafetyGuard();   // notepad is not protected
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard);
+            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
+            isElevated: () => true);
 
         result.Should().Be(0);
         executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Once);
@@ -81,7 +103,8 @@ public sealed class ExecuteCommandTests
         var guard    = new SafetyGuard();
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard);
+            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
+            isElevated: () => true);
 
         result.Should().Be(1);
     }
@@ -101,7 +124,8 @@ public sealed class ExecuteCommandTests
         var guard    = new SafetyGuard();
 
         await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard);
+            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
+            isElevated: () => true);
 
         executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
     }

@@ -68,12 +68,14 @@ public static class ExecuteCommand
         IProcessScanner scanner,
         IRuleMatcher matcher,
         IActionExecutor executor,
-        SafetyGuard? guard = null)
+        SafetyGuard? guard = null,
+        Func<bool>? isElevated = null,
+        Func<int>? relaunchAsAdmin = null)
     {
-        if (!IsElevated())
+        if (!(isElevated ?? IsElevated)())
         {
             AnsiConsole.MarkupLine("[yellow]Not running as administrator. Requesting elevation...[/]");
-            return Task.FromResult(RelaunchAsAdmin());
+            return Task.FromResult((relaunchAsAdmin ?? RelaunchAsAdmin)());
         }
 
         var path = ConfigurationLoader.DiscoverPath(configPath);
