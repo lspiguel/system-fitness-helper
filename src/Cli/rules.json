@@ -22,7 +22,7 @@
     { "id": "update-trusted-installer",   "description": "Windows Modules Installer — disabled, may block updates",   "enabled": false, "conditions": [{ "field": "ServiceName", "op": "eq", "value": "TrustedInstaller"  }], "action": "Stop" },
     { "id": "update-bits",                "description": "Background Intelligent Transfer Service — disabled",         "enabled": false, "conditions": [{ "field": "ServiceName", "op": "eq", "value": "BITS"              }], "action": "Stop" },
 
-    { "id": "search-wsearch",             "description": "Windows Search (indexing)",                                  "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "WSearch"           }], "action": "Stop" },
+    { "id": "search-wsearch",             "description": "Windows Search (indexing)",                                  "enabled": false,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "WSearch"           }], "action": "Stop" },
 
     { "id": "store-wsaifabricsvc",        "description": "WSAIFabricSvc",                                             "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "WSAIFabricSvc"    }], "action": "Stop" },
     { "id": "store-appxsvc",              "description": "AppX Deployment Service",                                   "enabled": true,  "conditions": [{ "field": "ServiceName", "op": "eq", "value": "AppXSVC"           }], "action": "Stop" },
