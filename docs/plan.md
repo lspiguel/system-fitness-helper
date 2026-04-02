@@ -23,7 +23,7 @@ Many desktop applications (browsers, creative suites, gaming platforms, communic
 
 ## Phased Development
 
-### Phase 0 — Rule-Based CLI
+### [Phase 0 — Rule-Based CLI](phase-0.md)
 
 A command-line tool the user runs on demand. The user maintains a predefined list of services and processes to target.
 
