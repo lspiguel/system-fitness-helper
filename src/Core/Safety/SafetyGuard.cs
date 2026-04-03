@@ -68,9 +68,19 @@ public sealed class SafetyGuard
             }
         }
 
-        if (ProtectedServices.HardCodedProcessNames.Contains(fp.ProcessName))
+        if (!fp.IsService && fp.ProcessName is not null)
         {
-            return (false, $"'{fp.ProcessName}' is a protected Windows system process.");
+            if (ProtectedServices.HardCodedProcessNames.Contains(fp.ProcessName))
+            {
+                return (false, $"'{fp.ProcessName}' is a protected Windows system process.");
+            }
+        }
+
+        // This is an unexpected condition!
+        if ((fp.IsService && fp.ProcessName is null)
+            || (!fp.IsService && fp.ProcessName is null))
+        {
+            return (false, $"Fingerprints for {(fp.IsService ? "services" : "processes")} without a name are not allowed.");
         }
 
         return (true, null);
