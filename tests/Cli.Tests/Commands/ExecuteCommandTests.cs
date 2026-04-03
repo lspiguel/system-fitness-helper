@@ -77,7 +77,7 @@ public sealed class ExecuteCommandTests
                .Returns([new MatchResult(fp, rule)]);
         var executor = new Mock<IActionExecutor>();
         executor.Setup(e => e.Execute(It.IsAny<ActionPlan>())).Returns(ActionResult.Ok("done"));
-        var guard    = new SafetyGuard();   // notepad is not protected
+        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));   // notepad is not protected
 
         var result = await ExecuteCommand.HandleAsync(
             path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
@@ -100,7 +100,7 @@ public sealed class ExecuteCommandTests
                .Returns([new MatchResult(fp, rule)]);
         var executor = new Mock<IActionExecutor>();
         executor.Setup(e => e.Execute(It.IsAny<ActionPlan>())).Returns(ActionResult.Fail("process not found"));
-        var guard    = new SafetyGuard();
+        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
         var result = await ExecuteCommand.HandleAsync(
             path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
@@ -121,7 +121,7 @@ public sealed class ExecuteCommandTests
         matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
                .Returns([new MatchResult(fp, rule)]);
         var executor = new Mock<IActionExecutor>();
-        var guard    = new SafetyGuard();
+        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
         await ExecuteCommand.HandleAsync(
             path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,

@@ -52,7 +52,7 @@ public sealed class ActionsCommandTests
         var matcher = new Mock<IRuleMatcher>();
         matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
                .Returns([new MatchResult(fp, rule)]);
-        var guard = new SafetyGuard();   // hard-coded list only
+        var guard = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));   // hard-coded list only
 
         var result = await ActionsCommand.HandleAsync(path, scanner.Object, matcher.Object, guard);
 
