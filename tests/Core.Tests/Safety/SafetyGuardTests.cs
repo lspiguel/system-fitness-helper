@@ -10,7 +10,7 @@ namespace SystemFitnessHelper.Tests.Safety;
 
 public sealed class SafetyGuardTests
 {
-    private static readonly SafetyGuard Guard = new();
+    private static readonly SafetyGuard Guard = new(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
     private static ProcessFingerprint MakeServiceFp(string processName, string serviceName) =>
         new(1234, processName, null, null, null, 0, null, true, serviceName, serviceName,

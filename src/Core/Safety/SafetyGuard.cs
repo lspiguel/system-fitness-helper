@@ -14,14 +14,11 @@ namespace SystemFitnessHelper.Safety;
 /// </summary>
 public sealed class SafetyGuard
 {
-    private readonly IReadOnlySet<string> _userProtectedServiceNames;
-
-    public SafetyGuard()
-        : this(new HashSet<string>(StringComparer.OrdinalIgnoreCase)) { }
+    private readonly IReadOnlySet<string> userProtectedServiceNames;
 
     public SafetyGuard(IReadOnlySet<string> userProtectedServiceNames)
     {
-        _userProtectedServiceNames = userProtectedServiceNames;
+        this.userProtectedServiceNames = userProtectedServiceNames;
     }
 
     /// <summary>
@@ -38,7 +35,7 @@ public sealed class SafetyGuard
                 return (false, $"'{fp.ServiceName}' is a hard-coded protected service.");
             }
 
-            if (_userProtectedServiceNames.Contains(fp.ServiceName))
+            if (this.userProtectedServiceNames.Contains(fp.ServiceName))
             {
                 return (false, $"'{fp.ServiceName}' is in the user-defined protected list.");
             }
