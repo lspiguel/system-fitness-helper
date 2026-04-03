@@ -70,7 +70,7 @@ public static class HelpCommand
         AnsiConsole.MarkupLine("[bold]sfhcli[/] — System Fitness Helper\n");
         AnsiConsole.MarkupLine("Usage: [grey]sfhcli <command> [[options]][/]\n");
 
-        var table = new Table().Border(TableBorder.Rounded).Expand();
+        var table = new Table().Border(TableBorder.None).Expand();
         table.AddColumn(new TableColumn("[bold]Command[/]") { Width = 14 });
         table.AddColumn("[bold]Description[/]");
 
