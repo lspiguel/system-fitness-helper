@@ -15,6 +15,15 @@ namespace SystemFitnessHelper.Matching;
 /// </summary>
 public sealed class RuleMatcher : IRuleMatcher
 {
+    /// <summary>
+    /// Matches the provided <paramref name="fingerprints"/> against the enabled rules in <paramref name="ruleSet"/>.
+    /// </summary>
+    /// <param name="fingerprints">The fingerprints to evaluate. May be empty.</param>
+    /// <param name="ruleSet">The rule set containing rules and protected names to apply.</param>
+    /// <returns>
+    /// A list of <see cref="MatchResult"/> instances pairing each fingerprint with the rule it satisfied.
+    /// Only matches for enabled rules are returned; the list will be empty if no matches are found.
+    /// </returns>
     public IReadOnlyList<MatchResult> Match(
         IReadOnlyList<ProcessFingerprint> fingerprints,
         RuleSet ruleSet)

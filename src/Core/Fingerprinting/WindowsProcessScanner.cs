@@ -17,6 +17,14 @@ namespace SystemFitnessHelper.Fingerprinting;
 /// </summary>
 public sealed class WindowsProcessScanner : IProcessScanner
 {
+    /// <summary>
+    /// Scans all running processes on the local machine and returns detailed fingerprint information for each process,
+    /// including service associations where applicable.
+    /// </summary>
+    /// <returns>
+    /// A read-only list of <see cref="ProcessFingerprint"/> objects, each representing a running process and its
+    /// associated metadata. The list is empty if no processes are found.
+    /// </returns>
     public IReadOnlyList<ProcessFingerprint> Scan()
     {
         var wmiData = QueryWmiProcessData();
