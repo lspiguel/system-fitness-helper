@@ -3,8 +3,8 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 // </copyright>
 
-using Spectre.Console;
 using System.CommandLine;
+using Spectre.Console;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
 using SystemFitnessHelper.Matching;
