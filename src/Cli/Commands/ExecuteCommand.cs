@@ -26,7 +26,9 @@ public static class ExecuteCommand
 {
     public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)
     {
-        var yesOption = new Option<bool>(["--yes", "-y"], "Skip confirmation prompt (non-interactive)");
+        var yesOption = new Option<bool>(
+            aliases: ["--yes", "-y"],
+            description: "Skip the confirmation prompt and execute immediately (non-interactive / scripted use).");
         var cmd = new Command("execute", "Execute planned actions against matched processes/services");
         cmd.AddOption(yesOption);
         cmd.SetHandler(async context =>

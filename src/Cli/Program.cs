@@ -3,10 +3,10 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 // </copyright>
 
-using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
+using Microsoft.Extensions.DependencyInjection;
 using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Cli.Commands;
 using SystemFitnessHelper.Fingerprinting;
@@ -27,17 +27,31 @@ services.AddSingleton<SafetyGuard>();
 var sp = services.BuildServiceProvider();
 
 // Global options
-var configOption = new Option<FileInfo?>(["--config", "-c"], "Path to rules.json");
-var verboseOption = new Option<bool>(["--verbose", "-v"], "Enable verbose (Debug) logging");
+var configOption = new Option<FileInfo?>(
+    aliases: ["--config", "-c"],
+    description: "Path to rules.json. If omitted, searches %APPDATA%\\SystemFitnessHelper\\rules.json then the executable directory.");
+var verboseOption = new Option<bool>(
+    aliases: ["--verbose", "-v"],
+    description: "Enable verbose (Debug) logging to console and log file.");
 
-var root = new RootCommand("sfh — System Fitness Helper: inspect and manage processes and services");
+// Sub-commands
+var configCmd = ConfigCommand.Create(sp, configOption);
+var listCmd = ListCommand.Create(sp, configOption);
+var actionsCmd = ActionsCommand.Create(sp, configOption);
+var executeCmd = ExecuteCommand.Create(sp, configOption);
+
+var subCommands = new Command[] { configCmd, listCmd, actionsCmd, executeCmd };
+var globalOptions = new Option[] { configOption, verboseOption };
+
+var root = new RootCommand("sfhcli — System Fitness Helper: inspect and manage processes and services");
 root.AddGlobalOption(configOption);
 root.AddGlobalOption(verboseOption);
 
-root.AddCommand(ConfigCommand.Create(sp, configOption));
-root.AddCommand(ListCommand.Create(sp, configOption));
-root.AddCommand(ActionsCommand.Create(sp, configOption));
-root.AddCommand(ExecuteCommand.Create(sp, configOption));
+root.AddCommand(configCmd);
+root.AddCommand(listCmd);
+root.AddCommand(actionsCmd);
+root.AddCommand(executeCmd);
+root.AddCommand(HelpCommand.Create(subCommands, globalOptions));
 
 return await new CommandLineBuilder(root)
     .UseDefaults()
