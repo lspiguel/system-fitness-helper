@@ -6,11 +6,18 @@ using Xunit;
 namespace SystemFitnessHelper.Cli.Tests.Commands
 {
     /// <summary>
+    /// Marks tests that redirect Console.Out and must not run in parallel with each other.
+    /// </summary>
+    [CollectionDefinition(nameof(ConsoleOutputCollection), DisableParallelization = true)]
+    public class ConsoleOutputCollection { }
+
+    /// <summary>
     /// Contains unit tests for the HelpCommand class, verifying help output for command-line scenarios.
     /// </summary>
     /// <remarks>
-    /// This test is written by GitHub Copilot.
+    /// This test was BADLY written by GitHub Copilot.
     /// </remarks>
+    [Collection(nameof(ConsoleOutputCollection))]
     public class HelpCommandTests
     {
         private static string RemoveAnsi(string input) =>
