@@ -14,12 +14,32 @@ namespace SystemFitnessHelper.Configuration;
 /// </summary>
 public sealed class FingerprintCondition
 {
+    /// <summary>
+    /// Gets the value of the field represented by this property.
+    /// </summary>
     public string Field { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Gets the operator used for comparison in a query expression.
+    /// </summary>
+    /// <remarks>The default value is "eq", representing the equality operator. This property is typically
+    /// used to specify the type of comparison (such as equality, greater than, or less than) when constructing dynamic
+    /// queries.</remarks>
     public string Op { get; init; } = "eq";
 
+    /// <summary>
+    /// Gets the string value represented by this property.
+    /// </summary>
     public string Value { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Evaluates the specified process fingerprint against the configured operation and value.
+    /// </summary>
+    /// <remarks>Supported operations include equality, inequality, regular expression matching, and numeric
+    /// comparisons. The evaluation is case-insensitive for string operations. If the operation is not recognized, the
+    /// method returns false.</remarks>
+    /// <param name="fp">The process fingerprint to evaluate. Must not be null.</param>
+    /// <returns>true if the fingerprint satisfies the operation and value criteria; otherwise, false.</returns>
     public bool Evaluate(ProcessFingerprint fp)
     {
         var fieldValue = this.GetFieldValue(fp);

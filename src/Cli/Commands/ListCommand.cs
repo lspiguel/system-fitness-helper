@@ -4,6 +4,8 @@
 // </copyright>
 
 using System.CommandLine;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Spectre.Console;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
@@ -18,24 +20,47 @@ namespace SystemFitnessHelper.Cli.Commands;
 /// </summary>
 public static class ListCommand
 {
+    private static readonly JsonSerializerOptions JsonOutputOptions = new ()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)
     {
         var cmd = new Command("list", "Enumerate processes and highlight matched ones");
+        var outputOption = new Option<string>(
+            aliases: ["--output", "-o"],
+            description: "Output format: 'console' (default) or 'json' (RuleSet template).");
+        outputOption.SetDefaultValue("console");
+        cmd.AddOption(outputOption);
+
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
+            var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
             var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
             var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
-            context.ExitCode = await HandleAsync(configFile?.FullName, scanner, matcher);
+            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, scanner, matcher);
         });
         return cmd;
     }
 
     public static Task<int> HandleAsync(
         string? configPath,
+        string outputType,
         IProcessScanner scanner,
         IRuleMatcher matcher)
     {
+        var fingerprints = scanner.Scan();
+
+        if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
+        {
+            var template = ConfigurationBuilder.Build(fingerprints);
+            Console.WriteLine(JsonSerializer.Serialize(template, JsonOutputOptions));
+            return Task.FromResult(0);
+        }
+
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
         {
@@ -43,8 +68,8 @@ public static class ListCommand
             return Task.FromResult(2);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        var (loadedRuleSet, validation) = ConfigurationLoader.Load(path);
+        if (!validation.IsValid || loadedRuleSet is null)
         {
             foreach (var err in validation.Errors)
             {
@@ -54,8 +79,7 @@ public static class ListCommand
             return Task.FromResult(2);
         }
 
-        var fingerprints = scanner.Scan();
-        var matches = matcher.Match(fingerprints, ruleSet);
+        var matches = matcher.Match(fingerprints, loadedRuleSet);
         var matchedSet = matches.Select(m => m.Fingerprint).ToHashSet();
         var destructiveSet = matches
             .Where(m => m.Rule.Action is ActionType.Kill or ActionType.Stop or ActionType.Suspend)
