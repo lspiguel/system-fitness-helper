@@ -2,7 +2,7 @@
   "profiles": {
     "SystemFitnessHelper.Cli": {
       "commandName": "Project",
-      "commandLineArgs": "execute"
+      "commandLineArgs": "list --output json"
     }
   }
 }

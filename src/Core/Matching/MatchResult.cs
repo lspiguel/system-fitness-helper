@@ -12,4 +12,5 @@ namespace SystemFitnessHelper.Matching;
 /// Immutable value object (record) produced by <see cref="IRuleMatcher"/> that pairs a
 /// <see cref="ProcessFingerprint"/> with the <see cref="Rule"/> it satisfied.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
 public sealed record MatchResult(ProcessFingerprint Fingerprint, Rule Rule);

@@ -11,6 +11,13 @@ namespace SystemFitnessHelper.Configuration;
 /// </summary>
 public sealed class RuleSet
 {
+    /// <summary>
+    /// Gets the collection of rules associated with this instance.
+    /// </summary>
     public List<Rule> Rules { get; init; } = [];
+
+    /// <summary>
+    /// Gets the list of protected resource identifiers.
+    /// </summary>
     public List<string> Protected { get; init; } = [];
 }

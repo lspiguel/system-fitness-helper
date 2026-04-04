@@ -23,6 +23,7 @@ namespace SystemFitnessHelper.Fingerprinting;
 /// <param name="ServiceName">The service short name when <paramref name="IsService"/> is <c>true</c>; otherwise <c>null</c>.</param>
 /// <param name="ServiceDisplayName">The user-facing service display name when applicable; otherwise <c>null</c>.</param>
 /// <param name="ServiceStatus">Current <see cref="ServiceControllerStatus"/> for the service when applicable; otherwise <c>null</c>.</param>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
 public sealed record ProcessFingerprint(
     int ProcessId,
     string ProcessName,

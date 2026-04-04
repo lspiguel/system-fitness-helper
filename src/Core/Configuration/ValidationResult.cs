@@ -11,13 +11,33 @@ namespace SystemFitnessHelper.Configuration;
 /// </summary>
 public sealed class ValidationResult
 {
-    private readonly List<string> _errors = [];
-    private readonly List<string> _warnings = [];
+    private readonly List<string> errors = [];
+    private readonly List<string> warnings = [];
 
-    public IReadOnlyList<string> Errors => _errors;
-    public IReadOnlyList<string> Warnings => _warnings;
-    public bool IsValid => _errors.Count == 0;
+    /// <summary>
+    /// Gets the collection of error messages associated with the current operation or object.
+    /// </summary>
+    public IReadOnlyList<string> Errors => this.errors;
 
-    internal void AddError(string message) => _errors.Add(message);
-    internal void AddWarning(string message) => _warnings.Add(message);
+    /// <summary>
+    /// Gets the collection of warning messages associated with the current operation or object.
+    /// </summary>
+    public IReadOnlyList<string> Warnings => this.warnings;
+
+    /// <summary>
+    /// Gets a value indicating whether the current state is valid.
+    /// </summary>
+    public bool IsValid => this.errors.Count == 0;
+
+    /// <summary>
+    /// Adds an error message to the collection of errors.
+    /// </summary>
+    /// <param name="message">The error message to add. Cannot be null.</param>
+    internal void AddError(string message) => this.errors.Add(message);
+
+    /// <summary>
+    /// Adds a warning message to the collection of warnings.
+    /// </summary>
+    /// <param name="message">The warning message to add. Cannot be null.</param>
+    internal void AddWarning(string message) => this.warnings.Add(message);
 }
