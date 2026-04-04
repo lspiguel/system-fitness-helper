@@ -40,9 +40,13 @@ A command-line tool the user runs on demand. The user maintains a predefined lis
 - **Logging** — Structured logging (Serilog or `Microsoft.Extensions.Logging`) with rotation, recording every action taken and its outcome
 - **Safety guards** — Whitelist of critical Windows services that must never be touched; confirmation prompts for destructive actions; rollback capability to restart a stopped service
 
+### Phase 0.B - Refactoring for Messaging
+
+A preliminary step consisting on creating a new Service layer on top of Core, that implements the same logic as the config, list, actions and execute commands, receives a message and does not use console output, instead producing object instances as a response (this will be later used for JSON-RPC). All CLI commands will now include the --output json global option, so that this change will be used as an intermediate step toward Phase 1.
+
 ### Phase 1 — Windows Service & Tray Application
 
-Moves the Phase 0 logic into a background Windows Service and adds a tray application as the user-facing interface. No new functional capabilities beyond what the CLI already provided.
+Moves the Phase 0 logic into a background Windows Service and adds a tray application as the user-facing interface. No new functional capabilities beyond what the CLI already provided. 
 
 - **Windows Service host** — Wrap the existing engine in a `Microsoft.Extensions.Hosting.WindowsServices` host so it runs in the background without a console window, listens on a command named pipe, publishes events on another named pipe (to notify on actions taken on schedule)
 - **Tray application** — Minimalistic system-tray icon with a context menu that allows to run an execute command (thru the command named pipe) and listens for events (on the event named pipe) to display transient information to the user, or to launch the UI component (the idea being that the system tray has a minimal overhead while the UI Component has most of the system load impact, but is used only when needed)
