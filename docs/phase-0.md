@@ -46,7 +46,8 @@ src/
 │   │   ├── Rule.cs                  # Single rule: name, fingerprint conditions, action, enabled flag
 │   │   ├── FingerprintCondition.cs  # One condition clause evaluated against a ProcessFingerprint
 │   │   ├── ActionType.cs            # Enum: Stop | Kill | Suspend | None
-│   │   └── ConfigurationLoader.cs   # Reads, deserializes, and validates rules.json
+│   │   ├── ConfigurationLoader.cs   # Reads, deserializes, and validates rules.json
+│   │   └── ConfigurationBuilder.cs  # Builds a RuleSet template from a live process/service snapshot
 │   │
 │   ├── Fingerprinting/
 │   │   ├── ProcessFingerprint.cs    # Immutable descriptor for a running process or service
@@ -128,6 +129,8 @@ Using `ServiceDisplayName` is the most user-friendly option; `ServiceName` is mo
 Example schema: see [sample-config0.json](sample-config0.json).
 
 **`ConfigurationLoader`** — deserializes the file, validates required fields, checks for duplicate rule IDs, and surfaces a typed `ValidationResult` (list of errors/warnings) without throwing.
+
+**`ConfigurationBuilder`** — given the result of `WindowsProcessScanner.Scan()`, produces a `RuleSet` template with one disabled `Rule` per fingerprint. Each rule has a unique sequential ID (`rule-0001`, `rule-0002`, …), a human-readable description (service display name for services, process name for plain processes), a single `FingerprintCondition` matching on `ServiceName` (for services) or `ProcessName` (for plain processes), and `Action` set to `Stop` for services or `Kill` for plain processes. All rules have `Enabled = false` so users can review and selectively enable them before applying. This class is the foundation for the `--output json` option on `sfh list` and for future UI-based configuration builders.
 
 ---
 
@@ -224,12 +227,11 @@ Built with **System.CommandLine**. Each command:
 3. Print any validation errors/warnings below the table
 4. Exit 2 if validation errors exist, 0 otherwise
 
-#### `sfh list [--config <path>] [--all]`
+#### `sfh list [--config <path>] [--output <type>]`
 
-1. Load config, scan processes via `IProcessScanner`
-2. Run `RuleMatcher` against every fingerprint
-3. Print all processes in a table; rows with a match are highlighted (yellow = matched, red = matched + destructive action)
-4. Without `--all`, unmatched processes are still shown but dimmed
+1. Scan processes via `IProcessScanner`
+2. With `--output console` (default): load config, run `RuleMatcher`, print all processes in a table; rows with a match are highlighted (yellow = matched, red = matched + destructive action)
+3. With `--output json`: skip config and rule matching; instead pass the fingerprint list to `ConfigurationBuilder.Build()` and print the resulting `RuleSet` as indented JSON. This is intended for copy-pasting as a starting configuration — all generated rules are disabled and must be reviewed before use.
 
 #### `sfh actions [--config <path>]`
 
