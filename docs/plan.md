@@ -44,7 +44,11 @@ A command-line tool the user runs on demand. The user maintains a predefined lis
 
 A preliminary step consisting on creating a new Service layer on top of Core, that implements the same logic as the config, list, actions and execute commands, receives a message and does not use console output, instead producing object instances as a response (this will be later used for JSON-RPC). All CLI commands will now include the --output json global option, so that this change will be used as an intermediate step toward Phase 1.
 
-### Phase 1 — Windows Service & Tray Application
+### [Phase 0.C - Multiple Rulesets](phase-0c.md)
+
+Second intermediate step, instead of having one ruleset, several rulesets can be defined at the same time. Now the rules config file contains a dictionary indexed by the Ruleset name (which is unique), a Ruleset (existing class), a boolean flag that indicates that the ruleset is the default (only one allowed to be true). A new optional --ruleset global option is accepted for all commands (save for list command with JSON output, BuildTemplate where it does not make sense) to specify which ruleset to use. If --ruleset is omitted, the default one is used.
+
+### [Phase 1 — Windows Service & Tray Application](phase-1.md)
 
 Moves the Phase 0 logic into a background Windows Service and adds a tray application as the persistent part of the user-facing interface. A separate UI Component exists that exposes the full interactive experience based on a separate application that is run on demand to minimize resource utilization. No new functional capabilities beyond what the CLI already provided. 
 

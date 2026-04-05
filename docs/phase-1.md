@@ -2,9 +2,9 @@
 
 ## Goal
 
-Move the Phase 0 / 0.B logic into a background Windows Service and add two lightweight user-facing processes: a system-tray application and a full-screen dashboard UI. No new functional capabilities are introduced beyond what the CLI already provides. The primary goal is to make the engine run continuously in the background, expose it over a local JSON-RPC 2.0 named-pipe channel, and provide a graphical front-end that communicates through that channel.
+Move the Phase 0 / 0.B / 0.C logic into a background Windows Service and add two lightweight user-facing processes: a system-tray application and a full-screen dashboard UI. No new functional capabilities are introduced beyond what the CLI already provides. The primary goal is to make the engine run continuously in the background, expose it over a local JSON-RPC 2.0 named-pipe channel, and provide a graphical front-end that communicates through that channel.
 
-The Phase 0.B service layer (`IConfigService`, `IListService`, `IActionsService`, `IExecuteService`) is the central contract: the Windows Service calls the same interfaces as the CLI does, and the pipe protocol is defined in terms of the same response types (`ConfigResult`, `ProcessListResult`, `ActionsResult`, `ExecuteResult`).
+The Phase 0.B service layer (`IConfigService`, `IListService`, `IActionsService`, `IExecuteService`) is the central contract: the Windows Service calls the same interfaces as the CLI does, and the pipe protocol is defined in terms of the same response types (`ConfigResult`, `ProcessListResult`, `ActionsResult`, `ExecuteResult`). The Phase 0.C multi-ruleset model is fully reflected in the protocol: all relevant params types carry an optional `RuleSetName`, and config-save operates on the whole `RuleSetsConfig`.
 
 ---
 
@@ -76,10 +76,10 @@ src/Ipc/
 ├── Messages/
 │   ├── Methods.cs                # string constants: Sfh.Config, Sfh.List, Sfh.ListTemplate, Sfh.Actions, Sfh.Execute, Sfh.ConfigSave
 │   ├── ConfigParams.cs           # {string? ConfigPath}
-│   ├── ListParams.cs             # {string? ConfigPath}
-│   ├── ActionsParams.cs          # {string? ConfigPath}
-│   ├── ExecuteParams.cs          # {string? ConfigPath}
-│   ├── ConfigSaveParams.cs       # {RuleSet RuleSet, string? ConfigPath}
+│   ├── ListParams.cs             # {string? ConfigPath, string? RuleSetName}
+│   ├── ActionsParams.cs          # {string? ConfigPath, string? RuleSetName}
+│   ├── ExecuteParams.cs          # {string? ConfigPath, string? RuleSetName}
+│   ├── ConfigSaveParams.cs       # {RuleSetsConfig RuleSetsConfig, string? ConfigPath}
 │   ├── ConfigSaveResult.cs       # {bool Success, string? ErrorMessage}
 │   └── Events/
 │       └── ActionExecutedEvent.cs  # mirrors ActionResultView; published after each execute action
@@ -110,7 +110,7 @@ src/Service/
     ├── ListHandler.cs            # method: sfh.list → IListService.GetProcessList; sfh.list.template → IListService.BuildTemplate
     ├── ActionsHandler.cs         # method: sfh.actions → IActionsService.GetActions
     ├── ExecuteHandler.cs         # method: sfh.execute → IExecuteService.Execute; broadcasts ActionExecutedEvent per result
-    └── ConfigSaveHandler.cs      # method: sfh.config.save → deserializes RuleSet, writes to config path, returns ConfigSaveResult
+    └── ConfigSaveHandler.cs      # method: sfh.config.save → deserializes RuleSetsConfig, writes atomically to config path, returns ConfigSaveResult
 ```
 
 ### `src/TrayApp/`
@@ -241,20 +241,21 @@ Exactly one of `Result` or `Error` is non-null.
 | `MethodNotFound` | -32601 | No handler registered for the method |
 | `InternalError` | -32603 | Unhandled exception in the handler |
 | `ConfigNotFound` | -32000 | Service-level: rules.json could not be located |
-| `ExecutionFailed` | -32001 | Service-level: at least one action failed |
+| `RuleSetNotFound` | -32001 | Service-level: named ruleset does not exist in the config |
+| `ExecutionFailed` | -32002 | Service-level: at least one action failed |
 
 #### Methods and parameter / result types
 
 | Method | Params type | Result type | Notes |
 |---|---|---|---|
-| `sfh.config` | `ConfigParams` | `ConfigResult` | Validates the service config file |
-| `sfh.list` | `ListParams` | `ProcessListResult` | Scans + matches; returns fingerprints and match info |
-| `sfh.list.template` | *(none)* | `RuleSet` | Generates a disabled RuleSet from the live process snapshot |
-| `sfh.actions` | `ActionsParams` | `ActionsResult` | Dry-run: returns action plans with blocked/unblocked state |
-| `sfh.execute` | `ExecuteParams` | `ExecuteResult` | Executes actions; broadcasts `sfh.action.executed` per result |
-| `sfh.config.save` | `ConfigSaveParams` | `ConfigSaveResult` | Persists an updated RuleSet to the config file |
+| `sfh.config` | `ConfigParams` | `ConfigResult` | Validates the service config; returns all named rulesets and `AvailableRuleSetNames` |
+| `sfh.list` | `ListParams` | `ProcessListResult` | Scans + matches using `RuleSetName` (or default); returns fingerprints, matches, and `ResolvedRuleSetName` |
+| `sfh.list.template` | *(none)* | `RuleSet` | Generates a disabled RuleSet from the live process snapshot; no ruleset context |
+| `sfh.actions` | `ActionsParams` | `ActionsResult` | Dry-run using `RuleSetName` (or default); returns plans and `ResolvedRuleSetName` |
+| `sfh.execute` | `ExecuteParams` | `ExecuteResult` | Executes actions using `RuleSetName` (or default); broadcasts `sfh.action.executed` per result |
+| `sfh.config.save` | `ConfigSaveParams` | `ConfigSaveResult` | Persists the entire updated `RuleSetsConfig` atomically to the config file |
 
-`ConfigPath` in all params types is always `null` when called from the service; the service resolves its own config path at `%ProgramData%\SystemFitnessHelper\rules.json`. The field exists so that `CommandPipeClient` can optionally be used by integration tests or future tooling that targets an alternate config.
+`ConfigPath` and `RuleSetName` in all params types are always `null` when called from the TrayApp or Ui: the service resolves its own config path (`%ProgramData%\SystemFitnessHelper\rules.json`) and uses the default ruleset. Both fields exist so that `CommandPipeClient` can optionally be used by integration tests or CLI tooling that targets an alternate config or a named ruleset.
 
 #### Events
 
@@ -413,26 +414,26 @@ Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct);
 ```
 
 **`ConfigHandler`** — `Method = Methods.Config`:
-Deserializes `ConfigParams` from `params`, calls `configService.GetConfig(configParams.ConfigPath ?? serviceConfigPath)`, returns `ConfigResult`.
+Deserializes `ConfigParams` from `params`, calls `configService.GetConfig(configParams.ConfigPath ?? serviceConfigPath)`, returns `ConfigResult` (which now contains `RuleSetsConfig?` and `AvailableRuleSetNames`).
 
 **`ListHandler`** — handles two methods:
-- `Methods.List`: deserializes `ListParams`, calls `listService.GetProcessList(...)`, returns `ProcessListResult`.
-- `Methods.ListTemplate`: calls `listService.BuildTemplate()`, returns `RuleSet`.
+- `Methods.List`: deserializes `ListParams`, calls `listService.GetProcessList(params.ConfigPath ?? serviceConfigPath, params.RuleSetName)`, returns `ProcessListResult` (including `ResolvedRuleSetName`). If the resolver returns an error, the handler returns a `RuleSetNotFound` JSON-RPC error response.
+- `Methods.ListTemplate`: calls `listService.BuildTemplate()`, returns `RuleSet`. No ruleset context involved.
 
 Because `IRequestHandler` maps one-to-one with a method name, `ListHandler` is split into `ListProcessHandler` and `ListTemplateHandler`, each implementing `IRequestHandler` for their respective method.
 
 **`ActionsHandler`** — `Method = Methods.Actions`:
-Calls `actionsService.GetActions(...)`, returns `ActionsResult`.
+Deserializes `ActionsParams`, calls `actionsService.GetActions(params.ConfigPath ?? serviceConfigPath, params.RuleSetName)`, returns `ActionsResult`. Returns `RuleSetNotFound` error if the named ruleset does not exist.
 
 **`ExecuteHandler`** — `Method = Methods.Execute`:
-Calls `executeService.Execute(...)`, returns `ExecuteResult`. After the call, iterates `result.Results` and calls `eventPipeServer.Broadcast(new JsonRpcNotification { Method = "sfh.action.executed", Params = Serialize(ActionExecutedEvent.From(resultView)) })` for each result.
+Deserializes `ExecuteParams`, calls `executeService.Execute(params.ConfigPath ?? serviceConfigPath, params.RuleSetName)`, returns `ExecuteResult`. Returns `RuleSetNotFound` error if the named ruleset does not exist. After the call, iterates `result.Results` and calls `eventPipeServer.Broadcast(new JsonRpcNotification { Method = "sfh.action.executed", Params = Serialize(ActionExecutedEvent.From(resultView)) })` for each result.
 
 **`ConfigSaveHandler`** — `Method = Methods.ConfigSave`:
 1. Deserializes `ConfigSaveParams`.
-2. Validates `params.RuleSet` is not null.
-3. Serializes `params.RuleSet` to indented JSON.
+2. Validates `params.RuleSetsConfig` is not null and has at least one ruleset with `IsDefault = true`.
+3. Serializes `params.RuleSetsConfig` to indented JSON.
 4. Writes to `params.ConfigPath ?? serviceConfigPath` atomically (write to a `.tmp` file, then `File.Replace`).
-5. Returns `ConfigSaveResult { Success = true }` on success, `{ Success = false, ErrorMessage = ... }` on I/O failure.
+5. Returns `ConfigSaveResult { Success = true }` on success, `{ Success = false, ErrorMessage = ... }` on I/O or validation failure.
 
 ---
 
@@ -445,12 +446,14 @@ WinForms app targeting `net8.0-windows`, `<UseWindowsForms>true</UseWindowsForms
 Thin wrapper around `CommandPipeClient` and `EventPipeClient` that exposes typed async methods:
 
 ```csharp
-Task<ActionsResult> GetActionsAsync(CancellationToken ct = default)
-Task<ExecuteResult> ExecuteAsync(CancellationToken ct = default)
+Task<ActionsResult> GetActionsAsync(string? ruleSetName = null, CancellationToken ct = default)
+Task<ExecuteResult> ExecuteAsync(string? ruleSetName = null, CancellationToken ct = default)
 event EventHandler<ActionExecutedEventArgs> ActionExecuted
 Task StartEventListeningAsync(CancellationToken ct)
 bool IsServiceRunning { get; }   // updated periodically by a health-check timer
 ```
+
+Both methods pass `ruleSetName = null` by default, so the service uses its configured default ruleset. The TrayApp does not expose a ruleset picker; it always acts on the default. If a non-default ruleset is needed from the tray in the future, the caller can supply the name.
 
 `IsServiceRunning` is maintained by a `System.Windows.Forms.Timer` that fires every 10 seconds and attempts a quick `SendAsync` with a short timeout. If the call succeeds, the property is `true`; if it throws `TimeoutException`, it is `false`.
 
@@ -488,19 +491,23 @@ Same pattern as the TrayApp `ServiceConnection` but without the event pipe clien
 
 ```csharp
 Task<ConfigResult> GetConfigAsync(CancellationToken ct = default)
-Task<ProcessListResult> GetProcessListAsync(CancellationToken ct = default)
+Task<ProcessListResult> GetProcessListAsync(string? ruleSetName = null, CancellationToken ct = default)
 Task<RuleSet> GetTemplateAsync(CancellationToken ct = default)
-Task<ActionsResult> GetActionsAsync(CancellationToken ct = default)
-Task<ExecuteResult> ExecuteAsync(CancellationToken ct = default)
-Task<ConfigSaveResult> SaveConfigAsync(RuleSet ruleSet, CancellationToken ct = default)
+Task<ActionsResult> GetActionsAsync(string? ruleSetName = null, CancellationToken ct = default)
+Task<ExecuteResult> ExecuteAsync(string? ruleSetName = null, CancellationToken ct = default)
+Task<ConfigSaveResult> SaveConfigAsync(RuleSetsConfig ruleSetsConfig, CancellationToken ct = default)
 ```
+
+`ruleSetName` is supplied from the UI's active ruleset selector (see `ConfigEditorPanel`). `SaveConfigAsync` now accepts the entire `RuleSetsConfig` so that adding, editing, or deleting a ruleset always persists the full document atomically.
 
 #### `MainForm`
 
 A `Form` with:
-- A `ToolStrip` across the top with: **Refresh**, **Execute**, and a status label ("Connected" / "Service not running").
+- A `ToolStrip` across the top with: **Refresh**, **Execute**, a **Ruleset** `ComboBox` selector, and a status label ("Connected" / "Service not running").
 - A `TabControl` with three tabs: **Processes**, **Actions**, **Configuration**.
-- A `StatusStrip` at the bottom showing the last-refresh timestamp.
+- A `StatusStrip` at the bottom showing the last-refresh timestamp and the active ruleset name.
+
+The **Ruleset** ComboBox is populated from `ConfigResult.AvailableRuleSetNames` after the initial `GetConfigAsync()` call. The selected name is passed as `ruleSetName` to `GetProcessListAsync`, `GetActionsAsync`, and `ExecuteAsync`. Changing the selection triggers a refresh of the Processes and Actions tabs automatically. The Configuration tab always loads the full `RuleSetsConfig` (all rulesets).
 
 On load, calls `Refresh()` which populates all three tabs in sequence. Long-running service calls are awaited on a background task via `async void` event handlers; a `ProgressBar` overlay (`UseWaitCursor = true`) is shown while calls are in flight. If the service is unavailable, all tab contents are replaced with an error label.
 
@@ -510,26 +517,37 @@ On load, calls `Refresh()` which populates all three tabs in sequence. Long-runn
 
 Rows with a destructive matched action are coloured red; rows with a non-destructive match are coloured yellow; unmatched rows are the default colour. This mirrors the `sfh list` CLI command output.
 
-`Refresh()` calls `serviceConnection.GetProcessListAsync()` and rebinds the grid.
+`Refresh(string? ruleSetName)` calls `serviceConnection.GetProcessListAsync(ruleSetName)` and rebinds the grid. Called by `MainForm` whenever the active ruleset changes.
 
 #### `ActionsPanel`
 
 `UserControl` hosting a `DataGridView` bound to `IReadOnlyList<ActionPlanView>`. Columns: Process, Service, Rule, Action, Blocked, Reason.
 
-Blocked rows are coloured orange. `Refresh()` calls `serviceConnection.GetActionsAsync()`.
+Blocked rows are coloured orange. `Refresh(string? ruleSetName)` calls `serviceConnection.GetActionsAsync(ruleSetName)`. Called by `MainForm` whenever the active ruleset changes.
 
 #### `ConfigEditorPanel`
 
-`UserControl` hosting a `DataGridView` of rules with inline editing enabled. Columns: ID (read-only), Enabled (checkbox), Action (ComboBox cell), Conditions (read-only summary), Description.
+`UserControl` with two areas:
+- **Top bar**: a `ComboBox` showing all ruleset names (labelled "Editing ruleset:") and a toolbar with ruleset-level buttons.
+- **Main area**: a `DataGridView` of rules for the selected ruleset, with inline editing enabled.
 
-Toolbar buttons above the grid:
-- **Save** — serializes the current rule list back into a `RuleSet` and calls `serviceConnection.SaveConfigAsync(ruleSet)`. Shows a success or error message box.
-- **Add Rule** — opens a `RuleEditDialog` (modal form) pre-populated with blank fields.
+Rule grid columns: ID (read-only), Enabled (checkbox), Action (ComboBox cell), Conditions (read-only summary), Description.
+
+The `ComboBox` selection determines which ruleset's rules are shown in the grid. The `IsDefault` flag is indicated by a `[DEFAULT]` suffix in the ComboBox item text. Selecting a different ruleset in the ComboBox rebinds the grid immediately (no service call needed — the full `RuleSetsConfig` is already loaded).
+
+**Ruleset-level toolbar buttons:**
+- **New Ruleset** — prompts for a unique name, adds a new empty `RuleSet` entry to the in-memory `RuleSetsConfig`, selects it in the ComboBox.
+- **Delete Ruleset** — removes the selected ruleset from the in-memory config after confirmation; not allowed if it is the default and no other ruleset exists.
+- **Set as Default** — sets the selected ruleset's `IsDefault = true`, clears `IsDefault` on all others.
+
+**Rule-level toolbar buttons:**
+- **Save** — serializes the entire in-memory `RuleSetsConfig` and calls `serviceConnection.SaveConfigAsync(ruleSetsConfig)`. Shows a success or error message box.
+- **Add Rule** — opens a `RuleEditDialog` (modal form) pre-populated with blank fields; adds the result to the currently selected ruleset.
 - **Edit Rule** — opens `RuleEditDialog` populated with the selected rule.
 - **Delete Rule** — removes the selected row after confirmation.
-- **Add from Template** — calls `serviceConnection.GetTemplateAsync()` to get the live process snapshot as a disabled `RuleSet`; opens a `TemplateImportDialog` listing those rules; the user checks the ones to import; checked rules are appended to the current rule list (still disabled, ready to be reviewed and enabled before saving).
+- **Add from Template** — calls `serviceConnection.GetTemplateAsync()` to get the live process snapshot as a disabled `RuleSet`; opens a `TemplateImportDialog` listing those rules; the user checks the ones to import and selects the target ruleset (defaults to the currently selected one); checked rules are appended to the target ruleset's rule list (still disabled).
 
-`Refresh()` calls `serviceConnection.GetConfigAsync()` and rebinds the grid.
+`Refresh()` calls `serviceConnection.GetConfigAsync()`, loads the full `RuleSetsConfig` into memory, and rebinds both the ComboBox and the rule grid.
 
 ---
 
@@ -549,7 +567,7 @@ sfhi status    — prints current service status and config file path
 1. Requires elevation; if not elevated, re-launches with `runas` verb (same pattern as `ExecuteCommand`).
 2. Copies the service binary directory to `%ProgramFiles%\SystemFitnessHelper\Service\`.
 3. Creates `%ProgramData%\SystemFitnessHelper\` if it does not exist.
-4. Writes a minimal `rules.json` to `%ProgramData%\SystemFitnessHelper\rules.json` if one does not already exist: `{"rules":[],"protected":[]}`.
+4. Writes a minimal `rules.json` to `%ProgramData%\SystemFitnessHelper\rules.json` if one does not already exist, using the Phase 0.C multi-ruleset schema: `{"ruleSets":{"default":{"isDefault":true,"rules":[],"protected":[]}}}`.
 5. Runs `sc create SystemFitnessHelper binPath= "<installDir>\SystemFitnessHelper.Service.exe" start= auto DisplayName= "System Fitness Helper"` via `Process.Start`.
 6. Sets the service description via `sc description`.
 7. Prints a confirmation message with the install path and config path.
@@ -607,11 +625,11 @@ The CLI (`sfh`) is unchanged and still discovers config via the three-step searc
 
 1. **`Ipc` protocol types** — create `JsonRpcRequest`, `JsonRpcResponse`, `JsonRpcNotification`, `JsonRpcError`, `JsonRpcErrorCode`; write `JsonRpcSerializationTests` covering round-trip for each type and enum values
 2. **`PipeFraming`** — implement `WriteMessageAsync` / `ReadMessageAsync` with length-prefix framing; write `PipeFramingTests` using `MemoryStream` as the pipe substitute
-3. **Message types** — create all `*Params`, `*Result`, `Methods`, `ActionExecutedEvent`; verify they serialize cleanly with `System.Text.Json` (including `ActionType` enum as string)
+3. **Message types** — create all `*Params` (including `string? RuleSetName` on `ListParams`, `ActionsParams`, `ExecuteParams`), `*Result`, `Methods`, `ActionExecutedEvent`; update `ConfigSaveParams` to carry `RuleSetsConfig` instead of `RuleSet`; verify they serialize cleanly with `System.Text.Json` (including `ActionType` enum as string and `RuleSetsConfig` dictionary round-trip)
 4. **`CommandPipeClient`** — implement typed `SendAsync<T>`; write tests using a loopback `AnonymousPipeServerStream` pair
 5. **`EventPipeClient`** — implement listen loop with reconnection; write tests using an in-process server
 6. **`HandlerDispatcher`** — implement method routing and error wrapping; write `HandlerDispatcherTests` covering: unknown method → `MethodNotFound`; handler throws `JsonRpcException` → error response; handler throws generic exception → `InternalError`
-7. **Handlers** — implement `ConfigHandler`, `ListProcessHandler`, `ListTemplateHandler`, `ActionsHandler`, `ExecuteHandler`, `ConfigSaveHandler`; write handler tests for each using mocked service interfaces; test `ExecuteHandler` broadcasts one event per result
+7. **Handlers** — implement `ConfigHandler`, `ListProcessHandler`, `ListTemplateHandler`, `ActionsHandler`, `ExecuteHandler`, `ConfigSaveHandler`; write handler tests for each using mocked service interfaces; test `ListProcessHandler` / `ActionsHandler` / `ExecuteHandler` with `RuleSetName = null` (uses default) and with a valid named ruleset; test that an unknown `RuleSetName` produces a `RuleSetNotFound` error response; test `ExecuteHandler` broadcasts one event per result; test `ConfigSaveHandler` validates that exactly one ruleset has `IsDefault = true`
 8. **`EventPipeServer`** — implement broadcast and client lifecycle; write integration test: two connected clients both receive a broadcast
 9. **`CommandPipeServer`** — implement accept-read-dispatch-write loop; write integration test: send a valid request over a real named pipe, receive the expected response
 10. **`ServiceWorker` + `Program.cs`** — wire the generic host; verify the service starts, accepts a connection, and responds when run interactively
@@ -620,8 +638,8 @@ The CLI (`sfh`) is unchanged and still discovers config via the three-step searc
 13. **`TrayApp` — `TrayApplicationContext`** — implement tray icon, context menu, balloon-tip logic, service-down state
 14. **`TrayApp` — `UiLauncher`** — implement process detection and `SetForegroundWindow` P/Invoke
 15. **`Ui` — `ServiceConnection`** — implement typed wrappers around `CommandPipeClient`
-16. **`Ui` — `ProcessListPanel`** — implement data binding and row colouring; test with mock `ServiceConnection`
-17. **`Ui` — `ActionsPanel`** — implement data binding and blocked-row colouring
-18. **`Ui` — `ConfigEditorPanel`** — implement grid editing, Save, Add/Edit/Delete, Add from Template flow
+16. **`Ui` — `ProcessListPanel`** — implement data binding and row colouring; `Refresh(ruleSetName)` passes the active ruleset name; test with mock `ServiceConnection`
+17. **`Ui` — `ActionsPanel`** — implement data binding and blocked-row colouring; `Refresh(ruleSetName)` passes the active ruleset name
+18. **`Ui` — `ConfigEditorPanel`** — implement ruleset ComboBox, in-memory `RuleSetsConfig` editing, New/Delete/Set-as-Default ruleset buttons, rule-level Add/Edit/Delete, Save (full config), Add from Template with target ruleset picker
 19. **`Ui` — `MainForm`** — wire tabs, toolbar, async refresh, progress overlay, error state
 20. **End-to-end smoke test** — install the service; run `sfhi install && sfhi start`; open TrayApp; open the UI; run Execute from the tray; verify a balloon tip appears; open the Dashboard; verify the Processes tab, Actions tab, and Config Editor load correctly; verify `sfhi stop && sfhi uninstall` cleans up cleanly
