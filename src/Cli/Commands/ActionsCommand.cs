@@ -4,12 +4,11 @@
 // </copyright>
 
 using System.CommandLine;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Spectre.Console;
-using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Configuration;
-using SystemFitnessHelper.Fingerprinting;
-using SystemFitnessHelper.Matching;
-using SystemFitnessHelper.Safety;
+using SystemFitnessHelper.Services;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
@@ -20,50 +19,40 @@ namespace SystemFitnessHelper.Cli.Commands;
 /// </summary>
 public static class ActionsCommand
 {
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
     {
         var cmd = new Command("actions", "Show what actions would be taken (dry-run)");
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
-            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner)) !;
-            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher)) !;
-            context.ExitCode = await HandleAsync(configFile?.FullName, scanner, matcher);
+            var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
+            var service = (IActionsService)services.GetService(typeof(IActionsService))!;
+            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, service);
         });
         return cmd;
     }
 
-    public static Task<int> HandleAsync(
-        string? configPath,
-        IProcessScanner scanner,
-        IRuleMatcher matcher,
-        SafetyGuard? guard = null)
+    public static Task<int> HandleAsync(string? configPath, string outputType, IActionsService actionsService)
     {
-        var path = ConfigurationLoader.DiscoverPath(configPath);
-        if (path is null)
+        var result = actionsService.GetActions(configPath);
+
+        if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
-            AnsiConsole.MarkupLine("[red]Error:[/] No rules.json found. Use --config to specify a path.");
-            return Task.FromResult(2);
+            Console.WriteLine(JsonSerializer.Serialize(result, JsonOutputOptions));
+            return Task.FromResult(result.ExitCode);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        if (result.ErrorMessage is not null)
         {
-            foreach (var err in validation.Errors)
-            {
-                AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
-            }
-
-            return Task.FromResult(2);
+            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(result.ErrorMessage)}");
+            return Task.FromResult(result.ExitCode);
         }
-
-        var actualGuard = guard ?? new SafetyGuard(
-            new HashSet<string>(ruleSet.Protected, StringComparer.OrdinalIgnoreCase));
-
-        var plans = matcher
-            .Match(scanner.Scan(), ruleSet)
-            .Select(m => new ActionPlan(m.Fingerprint, m.Rule.Action, m.Rule.Id))
-            .ToList();
 
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("Process");
@@ -73,22 +62,21 @@ public static class ActionsCommand
         table.AddColumn("Blocked");
         table.AddColumn("Reason");
 
-        foreach (var plan in plans)
+        foreach (var plan in result.Plans)
         {
-            var (allowed, reason) = actualGuard.IsAllowed(plan);
             var actionColor = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
             table.AddRow(
-                Markup.Escape(plan.Fingerprint.ProcessName),
-                Markup.Escape(plan.Fingerprint.ServiceName ?? string.Empty),
+                Markup.Escape(plan.ProcessName),
+                Markup.Escape(plan.ServiceName ?? string.Empty),
                 Markup.Escape(plan.RuleId),
                 $"[{actionColor}]{plan.Action}[/]",
-                allowed ? "[green]No[/]" : "[red]Yes[/]",
-                Markup.Escape(reason ?? string.Empty));
+                plan.Blocked ? "[red]Yes[/]" : "[green]No[/]",
+                Markup.Escape(plan.BlockReason ?? string.Empty));
         }
 
         AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine($"[grey]{plans.Count} planned action(s).[/]");
+        AnsiConsole.MarkupLine($"[grey]{result.Plans.Count} planned action(s).[/]");
 
-        return Task.FromResult(0);
+        return Task.FromResult(result.ExitCode);
     }
 }

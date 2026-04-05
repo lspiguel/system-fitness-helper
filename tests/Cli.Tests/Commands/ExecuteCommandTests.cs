@@ -1,11 +1,8 @@
 using FluentAssertions;
 using Moq;
-using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Cli.Commands;
 using SystemFitnessHelper.Configuration;
-using SystemFitnessHelper.Fingerprinting;
-using SystemFitnessHelper.Matching;
-using SystemFitnessHelper.Safety;
+using SystemFitnessHelper.Services;
 using Xunit;
 
 namespace SystemFitnessHelper.Cli.Tests.Commands;
@@ -13,134 +10,136 @@ namespace SystemFitnessHelper.Cli.Tests.Commands;
 public sealed class ExecuteCommandTests
 {
     [Fact]
-    public async Task HandleAsync_NotElevated_ReturnsWithoutExecuting()
+    public async Task HandleAsync_NotElevated_ReturnsWithoutCallingServices()
     {
-        var executor = new Mock<IActionExecutor>();
+        var actionsService = new Mock<IActionsService>();
+        var executeService = new Mock<IExecuteService>();
 
         var result = await ExecuteCommand.HandleAsync(
-            WriteTempConfig(),
-            skipPrompt: true,
-            new Mock<IProcessScanner>().Object,
-            new Mock<IRuleMatcher>().Object,
-            executor.Object,
-            guard: null,
+            "any-path", "console", skipPrompt: true,
+            actionsService.Object, executeService.Object,
             isElevated: () => false,
             relaunchAsAdmin: () => 42);
 
         result.Should().Be(42);
-        executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
+        executeService.Verify(s => s.Execute(It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_NonExistentConfig_Returns2()
+    public async Task HandleAsync_Console_ErrorResult_Returns2()
     {
+        var actionsService = new Mock<IActionsService>();
+        actionsService.Setup(s => s.GetActions(It.IsAny<string?>()))
+                      .Returns(new ActionsResult([], "No rules.json found.", 2));
+        var executeService = new Mock<IExecuteService>();
+
         var result = await ExecuteCommand.HandleAsync(
-            @"C:\nonexistent\sfh-test\rules.json",
-            skipPrompt: true,
-            new Mock<IProcessScanner>().Object,
-            new Mock<IRuleMatcher>().Object,
-            new Mock<IActionExecutor>().Object,
+            "any-path", "console", skipPrompt: true,
+            actionsService.Object, executeService.Object,
             isElevated: () => true);
 
         result.Should().Be(2);
+        executeService.Verify(s => s.Execute(It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_NoMatches_Returns0()
+    public async Task HandleAsync_Console_NoPlans_Returns0WithoutExecuting()
     {
-        var path    = WriteTempConfig();
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([]);
-        var matcher  = new Mock<IRuleMatcher>();
-        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
-               .Returns([]);
-        var executor = new Mock<IActionExecutor>();
+        var actionsService = new Mock<IActionsService>();
+        actionsService.Setup(s => s.GetActions(It.IsAny<string?>()))
+                      .Returns(new ActionsResult([], null, 0));
+        var executeService = new Mock<IExecuteService>();
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object,
+            "any-path", "console", skipPrompt: true,
+            actionsService.Object, executeService.Object,
             isElevated: () => true);
 
         result.Should().Be(0);
-        executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
+        executeService.Verify(s => s.Execute(It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_SuccessfulAction_Returns0()
+    public async Task HandleAsync_Console_SuccessfulExecution_Returns0()
     {
-        var path     = WriteTempConfig();
-        var fp       = MakeProcessFp("notepad");
-        var rule     = new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] };
-        var scanner  = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher  = new Mock<IRuleMatcher>();
-        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
-               .Returns([new MatchResult(fp, rule)]);
-        var executor = new Mock<IActionExecutor>();
-        executor.Setup(e => e.Execute(It.IsAny<ActionPlan>())).Returns(ActionResult.Ok("done"));
-        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));   // notepad is not protected
+        var plans = new[]
+        {
+            new ActionPlanView("notepad", 1234, null, "r1", ActionType.Kill, false, null),
+        };
+        var actionsService = new Mock<IActionsService>();
+        actionsService.Setup(s => s.GetActions(It.IsAny<string?>()))
+                      .Returns(new ActionsResult(plans, null, 0));
+        var executeResult = new ExecuteResult(
+            [new ActionResultView("notepad", 1234, null, "r1", ActionType.Kill, true, "done")],
+            false, null, 0);
+        var executeService = new Mock<IExecuteService>();
+        executeService.Setup(s => s.Execute(It.IsAny<string?>())).Returns(executeResult);
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
+            "any-path", "console", skipPrompt: true,
+            actionsService.Object, executeService.Object,
             isElevated: () => true);
 
         result.Should().Be(0);
-        executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Once);
+        executeService.Verify(s => s.Execute(It.IsAny<string?>()), Times.Once);
     }
 
     [Fact]
-    public async Task HandleAsync_FailedAction_Returns1()
+    public async Task HandleAsync_Console_FailedExecution_Returns1()
     {
-        var path     = WriteTempConfig();
-        var fp       = MakeProcessFp("notepad");
-        var rule     = new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] };
-        var scanner  = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher  = new Mock<IRuleMatcher>();
-        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
-               .Returns([new MatchResult(fp, rule)]);
-        var executor = new Mock<IActionExecutor>();
-        executor.Setup(e => e.Execute(It.IsAny<ActionPlan>())).Returns(ActionResult.Fail("process not found"));
-        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        var plans = new[]
+        {
+            new ActionPlanView("notepad", 1234, null, "r1", ActionType.Kill, false, null),
+        };
+        var actionsService = new Mock<IActionsService>();
+        actionsService.Setup(s => s.GetActions(It.IsAny<string?>()))
+                      .Returns(new ActionsResult(plans, null, 0));
+        var executeResult = new ExecuteResult(
+            [new ActionResultView("notepad", 1234, null, "r1", ActionType.Kill, false, "process not found")],
+            true, null, 1);
+        var executeService = new Mock<IExecuteService>();
+        executeService.Setup(s => s.Execute(It.IsAny<string?>())).Returns(executeResult);
 
         var result = await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
+            "any-path", "console", skipPrompt: true,
+            actionsService.Object, executeService.Object,
             isElevated: () => true);
 
         result.Should().Be(1);
     }
 
     [Fact]
-    public async Task HandleAsync_BlockedByGuard_NotExecuted()
+    public async Task HandleAsync_JsonMode_SkipsPromptAndSerializesResult()
     {
-        var path     = WriteTempConfig();
-        var fp       = MakeProcessFp("svchost");   // svchost is hard-coded protected
-        var rule     = new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] };
-        var scanner  = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher  = new Mock<IRuleMatcher>();
-        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
-               .Returns([new MatchResult(fp, rule)]);
-        var executor = new Mock<IActionExecutor>();
-        var guard    = new SafetyGuard(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        var executeResult = new ExecuteResult([], false, null, 0);
+        var actionsService = new Mock<IActionsService>();
+        var executeService = new Mock<IExecuteService>();
+        executeService.Setup(s => s.Execute(It.IsAny<string?>())).Returns(executeResult);
 
-        await ExecuteCommand.HandleAsync(
-            path, skipPrompt: true, scanner.Object, matcher.Object, executor.Object, guard,
-            isElevated: () => true);
+        var (exitCode, json) = await CaptureConsole(() =>
+            ExecuteCommand.HandleAsync(
+                "any-path", "json", skipPrompt: false,   // prompt is skipped automatically in json mode
+                actionsService.Object, executeService.Object,
+                isElevated: () => true));
 
-        executor.Verify(e => e.Execute(It.IsAny<ActionPlan>()), Times.Never);
+        exitCode.Should().Be(0);
+        json.Should().Contain("\"ExitCode\"");
+        actionsService.Verify(s => s.GetActions(It.IsAny<string?>()), Times.Never);
     }
 
-    private static ProcessFingerprint MakeProcessFp(string name) =>
-        new(1234, name, null, null, null, 0, null, false, null, null, null);
-
-    private static string WriteTempConfig() => WriteTempConfig("""
-        { "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "None" }], "protected": [] }
-        """);
-
-    private static string WriteTempConfig(string json)
+    private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
     {
-        var path = Path.ChangeExtension(Path.GetTempFileName(), ".json");
-        File.WriteAllText(path, json);
-        return path;
+        var writer = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(writer);
+        try
+        {
+            var exitCode = await action();
+            return (exitCode, writer.ToString().Trim());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
     }
 }

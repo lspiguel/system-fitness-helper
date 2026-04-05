@@ -7,24 +7,28 @@ using System.CommandLine;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
-using Serilog;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Spectre.Console;
-using SystemFitnessHelper.Actions;
 using SystemFitnessHelper.Configuration;
-using SystemFitnessHelper.Fingerprinting;
-using SystemFitnessHelper.Matching;
-using SystemFitnessHelper.Safety;
+using SystemFitnessHelper.Services;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
 /// <summary>
 /// Implements the <c>execute</c> CLI sub-command, which scans processes, evaluates rules,
-/// and — after an optional confirmation prompt — applies each allowed action via <see cref="IActionExecutor"/>.
+/// and — after an optional confirmation prompt — applies each allowed action.
 /// Re-launches itself elevated via UAC if the process is not already running as administrator.
 /// </summary>
 public static class ExecuteCommand
 {
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
     {
         var yesOption = new Option<bool>(
             aliases: ["--yes", "-y"],
@@ -34,22 +38,22 @@ public static class ExecuteCommand
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
+            var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
             var yes = context.ParseResult.GetValueForOption(yesOption);
-            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner)) !;
-            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher)) !;
-            var executor = (IActionExecutor)services.GetService(typeof(IActionExecutor)) !;
-            context.ExitCode = await HandleAsync(configFile?.FullName, yes, scanner, matcher, executor);
+            var actionsService = (IActionsService)services.GetService(typeof(IActionsService))!;
+            var executeService = (IExecuteService)services.GetService(typeof(IExecuteService))!;
+            context.ExitCode = await HandleAsync(
+                configFile?.FullName, outputType, yes, actionsService, executeService);
         });
         return cmd;
     }
 
     public static Task<int> HandleAsync(
         string? configPath,
+        string outputType,
         bool skipPrompt,
-        IProcessScanner scanner,
-        IRuleMatcher matcher,
-        IActionExecutor executor,
-        SafetyGuard? guard = null,
+        IActionsService actionsService,
+        IExecuteService executeService,
         Func<bool>? isElevated = null,
         Func<int>? relaunchAsAdmin = null)
     {
@@ -59,39 +63,30 @@ public static class ExecuteCommand
             return Task.FromResult((relaunchAsAdmin ?? RelaunchAsAdmin)());
         }
 
-        var path = ConfigurationLoader.DiscoverPath(configPath);
-        if (path is null)
+        var jsonMode = outputType.Equals("json", StringComparison.OrdinalIgnoreCase);
+
+        // In JSON mode, skip prompt (non-interactive) and go straight to execution
+        if (jsonMode)
         {
-            AnsiConsole.MarkupLine("[red]Error:[/] No rules.json found. Use --config to specify a path.");
-            return Task.FromResult(2);
+            var execResult = executeService.Execute(configPath);
+            Console.WriteLine(JsonSerializer.Serialize(execResult, JsonOutputOptions));
+            return Task.FromResult(execResult.ExitCode);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        // Console mode: show plan, prompt, then execute
+        var actionsResult = actionsService.GetActions(configPath);
+        if (actionsResult.ErrorMessage is not null)
         {
-            foreach (var err in validation.Errors)
-            {
-                AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
-            }
-
-            return Task.FromResult(2);
+            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(actionsResult.ErrorMessage)}");
+            return Task.FromResult(actionsResult.ExitCode);
         }
 
-        var actualGuard = guard ?? new SafetyGuard(
-            new HashSet<string>(ruleSet.Protected, StringComparer.OrdinalIgnoreCase));
-
-        var plans = matcher
-            .Match(scanner.Scan(), ruleSet)
-            .Select(m => new ActionPlan(m.Fingerprint, m.Rule.Action, m.Rule.Id))
-            .ToList();
-
-        if (plans.Count == 0)
+        if (actionsResult.Plans.Count == 0)
         {
             AnsiConsole.MarkupLine("[grey]No actions to execute.[/]");
             return Task.FromResult(0);
         }
 
-        // Show plan table
         var planTable = new Table().Border(TableBorder.Rounded);
         planTable.AddColumn("Process");
         planTable.AddColumn("Service");
@@ -99,16 +94,17 @@ public static class ExecuteCommand
         planTable.AddColumn("Action");
         planTable.AddColumn("Blocked");
 
-        foreach (var plan in plans)
+        foreach (var plan in actionsResult.Plans)
         {
-            var (allowed, reason) = actualGuard.IsAllowed(plan);
             var actionColor = plan.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
             planTable.AddRow(
-                Markup.Escape(plan.Fingerprint.ProcessName),
-                Markup.Escape(plan.Fingerprint.ServiceName ?? string.Empty),
+                Markup.Escape(plan.ProcessName),
+                Markup.Escape(plan.ServiceName ?? string.Empty),
                 Markup.Escape(plan.RuleId),
                 $"[{actionColor}]{plan.Action}[/]",
-                allowed ? "[green]No[/]" : $"[red]Yes — {Markup.Escape(reason ?? string.Empty)}[/]");
+                plan.Blocked
+                    ? $"[red]Yes — {Markup.Escape(plan.BlockReason ?? string.Empty)}[/]"
+                    : "[green]No[/]");
         }
 
         AnsiConsole.Write(planTable);
@@ -119,47 +115,25 @@ public static class ExecuteCommand
             return Task.FromResult(0);
         }
 
-        var anyFailed = false;
+        var executeResult = executeService.Execute(configPath);
+
         var resultTable = new Table().Border(TableBorder.Rounded);
         resultTable.AddColumn("Process");
         resultTable.AddColumn("Action");
         resultTable.AddColumn("Result");
         resultTable.AddColumn("Detail");
 
-        foreach (var plan in plans)
+        foreach (var r in executeResult.Results)
         {
-            var (allowed, reason) = actualGuard.IsAllowed(plan);
-            ActionResult result;
-
-            if (!allowed)
-            {
-                result = ActionResult.Fail($"Blocked: {reason}");
-            }
-            else
-            {
-                result = executor.Execute(plan);
-                Log.Information(
-                    "Action {Action} on {Process} (rule: {Rule}): {Outcome}",
-                    plan.Action,
-                    plan.Fingerprint.ProcessName,
-                    plan.RuleId,
-                    result.Success ? "Success" : $"Failed - {result.Message}");
-            }
-
-            if (!result.Success)
-            {
-                anyFailed = true;
-            }
-
             resultTable.AddRow(
-                Markup.Escape(plan.Fingerprint.ProcessName),
-                plan.Action.ToString(),
-                result.Success ? "[green]✓ Success[/]" : "[red]✗ Failed[/]",
-                Markup.Escape(result.Message));
+                Markup.Escape(r.ProcessName),
+                r.Action.ToString(),
+                r.Success ? "[green]✓ Success[/]" : "[red]✗ Failed[/]",
+                Markup.Escape(r.Message));
         }
 
         AnsiConsole.Write(resultTable);
-        return Task.FromResult(anyFailed ? 1 : 0);
+        return Task.FromResult(executeResult.ExitCode);
     }
 
     private static bool IsElevated()

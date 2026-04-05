@@ -5,6 +5,7 @@ using SystemFitnessHelper.Cli.Commands;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Fingerprinting;
 using SystemFitnessHelper.Matching;
+using SystemFitnessHelper.Services;
 using Xunit;
 
 namespace SystemFitnessHelper.Cli.Tests.Commands;
@@ -12,263 +13,95 @@ namespace SystemFitnessHelper.Cli.Tests.Commands;
 public sealed class ListCommandTests
 {
     // -------------------------------------------------------------------------
-    // console output (existing behaviour)
+    // format=table, output=console
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task HandleAsync_Console_NonExistentConfig_Returns2()
+    public async Task HandleAsync_Table_Console_ErrorResult_Returns2()
     {
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([]);
-        var matcher = new Mock<IRuleMatcher>();
+        var service = new Mock<IListService>();
+        service.Setup(s => s.GetProcessList(It.IsAny<string?>()))
+               .Returns(new ProcessListResult([], [], "No rules.json found.", 2));
 
-        var result = await ListCommand.HandleAsync(
-            @"C:\nonexistent\sfh-test\rules.json",
-            "console",
-            scanner.Object,
-            matcher.Object);
+        var result = await ListCommand.HandleAsync("any-path", "table", "console", service.Object);
 
         result.Should().Be(2);
-        matcher.Verify(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(),
-                                    It.IsAny<RuleSet>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_Console_ValidConfig_NoMatches_Returns0()
+    public async Task HandleAsync_Table_Console_NoMatches_Returns0()
     {
-        var path = WriteTempConfig("""
-            {
-              "rules": [
-                {
-                  "id": "r1",
-                  "enabled": true,
-                  "conditions": [{ "field": "ProcessName", "op": "eq", "value": "nonexistent-process-xyz" }],
-                  "action": "Kill"
-                }
-              ],
-              "protected": []
-            }
-            """);
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([]);
-        var matcher = new Mock<IRuleMatcher>();
-        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(),
-                                   It.IsAny<RuleSet>()))
-               .Returns([]);
+        var service = new Mock<IListService>();
+        service.Setup(s => s.GetProcessList(It.IsAny<string?>()))
+               .Returns(new ProcessListResult([], [], null, 0));
 
-        var result = await ListCommand.HandleAsync(path, "console", scanner.Object, matcher.Object);
+        var result = await ListCommand.HandleAsync("any-path", "table", "console", service.Object);
+
+        result.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Table_Console_WithMatches_Returns0()
+    {
+        var fp = PlainProcess("notepad");
+        var rule = new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] };
+        var service = new Mock<IListService>();
+        service.Setup(s => s.GetProcessList(It.IsAny<string?>()))
+               .Returns(new ProcessListResult([fp], [new MatchResult(fp, rule)], null, 0));
+
+        var result = await ListCommand.HandleAsync("any-path", "table", "console", service.Object);
 
         result.Should().Be(0);
     }
 
     // -------------------------------------------------------------------------
-    // json output — general
+    // format=table, output=json
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task HandleAsync_Json_NoConfigRequired_Returns0()
+    public async Task HandleAsync_Table_Json_WritesJsonAndReturnsExitCode()
     {
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var result = await CaptureConsole(() =>
-            ListCommand.HandleAsync(
-                @"C:\nonexistent\sfh-test\rules.json",
-                "json",
-                scanner.Object,
-                matcher.Object));
-
-        result.ExitCode.Should().Be(0);
-        matcher.Verify(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(),
-                                    It.IsAny<RuleSet>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_EmptyFingerprints_OutputsEmptyRuleSet()
-    {
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([]);
-        var matcher = new Mock<IRuleMatcher>();
+        var service = new Mock<IListService>();
+        service.Setup(s => s.GetProcessList(It.IsAny<string?>()))
+               .Returns(new ProcessListResult([], [], null, 0));
 
         var (exitCode, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
+            ListCommand.HandleAsync("any-path", "table", "json", service.Object));
 
         exitCode.Should().Be(0);
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions);
-        ruleSet.Should().NotBeNull();
-        ruleSet!.Rules.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_OutputIsValidJson()
-    {
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns(
-        [
-            PlainProcess("notepad", @"C:\Windows\notepad.exe", "Microsoft", "explorer"),
-        ]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var act = () => JsonSerializer.Deserialize<RuleSet>(json, JsonOptions);
-        act.Should().NotThrow();
+        json.Should().Contain("\"ExitCode\"");
     }
 
     // -------------------------------------------------------------------------
-    // json output — plain process rules
+    // format=template
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task HandleAsync_Json_PlainProcess_AllFieldsPresent_ProducesFourConditions()
+    public async Task HandleAsync_Template_OutputsRuleSetJsonAndReturns0()
     {
-        var fp = PlainProcess("notepad", @"C:\Windows\notepad.exe", "Microsoft", "explorer");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher = new Mock<IRuleMatcher>();
+        var ruleSet = new RuleSet();
+        var service = new Mock<IListService>();
+        service.Setup(s => s.BuildTemplate()).Returns(ruleSet);
 
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
+        var (exitCode, json) = await CaptureConsole(() =>
+            ListCommand.HandleAsync(null, "template", "console", service.Object));
 
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        var rule = ruleSet.Rules.Single();
-
-        rule.Enabled.Should().BeFalse();
-        rule.ConditionLogic.Should().Be("And");
-        rule.Action.Should().Be(ActionType.Kill);
-        rule.Conditions.Should().HaveCount(4);
-        rule.Conditions.Should().ContainSingle(c => c.Field == "ProcessName" && c.Value == "notepad");
-        rule.Conditions.Should().ContainSingle(c => c.Field == "ExecutablePath" && c.Value == @"C:\Windows\notepad.exe");
-        rule.Conditions.Should().ContainSingle(c => c.Field == "Publisher" && c.Value == "Microsoft");
-        rule.Conditions.Should().ContainSingle(c => c.Field == "ParentProcessName" && c.Value == "explorer");
+        exitCode.Should().Be(0);
+        var deserialized = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions);
+        deserialized.Should().NotBeNull();
+        service.Verify(s => s.GetProcessList(It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_Json_PlainProcess_NullOptionalFields_OnlyProcessNameCondition()
+    public async Task HandleAsync_Template_NeverCallsGetProcessList()
     {
-        var fp = PlainProcess("notepad", null, null, null);
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher = new Mock<IRuleMatcher>();
+        var service = new Mock<IListService>();
+        service.Setup(s => s.BuildTemplate()).Returns(new RuleSet());
 
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
+        await CaptureConsole(() =>
+            ListCommand.HandleAsync(null, "template", "console", service.Object));
 
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        var rule = ruleSet.Rules.Single();
-
-        rule.Conditions.Should().HaveCount(1);
-        rule.Conditions.Single().Field.Should().Be("ProcessName");
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_PlainProcess_AllConditionsUseEqOperator()
-    {
-        var fp = PlainProcess("notepad", @"C:\Windows\notepad.exe", "Microsoft", "explorer");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        ruleSet.Rules.Single().Conditions.Should().OnlyContain(c => c.Op == "eq");
-    }
-
-    // -------------------------------------------------------------------------
-    // json output — service rules
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public async Task HandleAsync_Json_Service_ProducesSingleServiceNameCondition()
-    {
-        var fp = ServiceFingerprint("SteamClientService", "Steam Client Service");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        var rule = ruleSet.Rules.Single();
-
-        rule.Enabled.Should().BeFalse();
-        rule.Action.Should().Be(ActionType.Stop);
-        rule.Conditions.Should().HaveCount(1);
-        rule.Conditions.Single().Field.Should().Be("ServiceName");
-        rule.Conditions.Single().Op.Should().Be("eq");
-        rule.Conditions.Single().Value.Should().Be("SteamClientService");
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_Service_DescriptionUsesDisplayName()
-    {
-        var fp = ServiceFingerprint("SteamClientService", "Steam Client Service");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        ruleSet.Rules.Single().Description.Should().Be("Steam Client Service");
-    }
-
-    // -------------------------------------------------------------------------
-    // json output — deduplication
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public async Task HandleAsync_Json_DuplicateProcessFingerprints_ProducesOneRule()
-    {
-        var fp1 = PlainProcess("notepad", @"C:\Windows\notepad.exe", "Microsoft", "explorer");
-        var fp2 = PlainProcess("notepad", @"C:\Windows\notepad.exe", "Microsoft", "explorer");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp1, fp2]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        ruleSet.Rules.Should().HaveCount(1);
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_ProcessesDifferingByPublisher_ProducesSeparateRules()
-    {
-        var fp1 = PlainProcess("host", @"C:\app\host.exe", "Vendor A", "svchost");
-        var fp2 = PlainProcess("host", @"C:\app\host.exe", "Vendor B", "svchost");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp1, fp2]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        ruleSet.Rules.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task HandleAsync_Json_ServicesAreNotDeduplicated()
-    {
-        var fp1 = ServiceFingerprint("ServiceA", "Service A");
-        var fp2 = ServiceFingerprint("ServiceB", "Service B");
-        var scanner = new Mock<IProcessScanner>();
-        scanner.Setup(s => s.Scan()).Returns([fp1, fp2]);
-        var matcher = new Mock<IRuleMatcher>();
-
-        var (_, json) = await CaptureConsole(() =>
-            ListCommand.HandleAsync(null, "json", scanner.Object, matcher.Object));
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions)!;
-        ruleSet.Rules.Should().HaveCount(2);
+        service.Verify(s => s.GetProcessList(It.IsAny<string?>()), Times.Never);
     }
 
     // -------------------------------------------------------------------------
@@ -281,37 +114,8 @@ public sealed class ListCommandTests
         Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
 
-    private static ProcessFingerprint PlainProcess(
-        string name,
-        string? executablePath,
-        string? publisher,
-        string? parentProcessName) =>
-        new(
-            ProcessId: 1234,
-            ProcessName: name,
-            ExecutablePath: executablePath,
-            CommandLine: null,
-            Publisher: publisher,
-            WorkingSetBytes: 0,
-            ParentProcessName: parentProcessName,
-            IsService: false,
-            ServiceName: null,
-            ServiceDisplayName: null,
-            ServiceStatus: null);
-
-    private static ProcessFingerprint ServiceFingerprint(string serviceName, string displayName) =>
-        new(
-            ProcessId: 5678,
-            ProcessName: "svchost",
-            ExecutablePath: null,
-            CommandLine: null,
-            Publisher: null,
-            WorkingSetBytes: 0,
-            ParentProcessName: null,
-            IsService: true,
-            ServiceName: serviceName,
-            ServiceDisplayName: displayName,
-            ServiceStatus: null);
+    private static ProcessFingerprint PlainProcess(string name) =>
+        new(1234, name, null, null, null, 0, null, false, null, null, null);
 
     private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
     {
@@ -327,12 +131,5 @@ public sealed class ListCommandTests
         {
             Console.SetOut(original);
         }
-    }
-
-    private static string WriteTempConfig(string json)
-    {
-        var path = Path.ChangeExtension(Path.GetTempFileName(), ".json");
-        File.WriteAllText(path, json);
-        return path;
     }
 }
