@@ -8,8 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Spectre.Console;
 using SystemFitnessHelper.Configuration;
-using SystemFitnessHelper.Fingerprinting;
-using SystemFitnessHelper.Matching;
+using SystemFitnessHelper.Services;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
@@ -20,68 +19,62 @@ namespace SystemFitnessHelper.Cli.Commands;
 /// </summary>
 public static class ListCommand
 {
-    private static readonly JsonSerializerOptions JsonOutputOptions = new ()
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption)
+    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
     {
         var cmd = new Command("list", "Enumerate processes and highlight matched ones");
-        var outputOption = new Option<string>(
-            aliases: ["--output", "-o"],
-            description: "Output format: 'console' (default) or 'json' (RuleSet template).");
-        outputOption.SetDefaultValue("console");
-        cmd.AddOption(outputOption);
+        var formatOption = new Option<string>(
+            aliases: ["--format", "-f"],
+            description: "Output format: 'table' (default) shows process list; 'template' generates a RuleSet JSON template.");
+        formatOption.SetDefaultValue("table");
+        cmd.AddOption(formatOption);
 
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
             var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
-            var scanner = (IProcessScanner)services.GetService(typeof(IProcessScanner))!;
-            var matcher = (IRuleMatcher)services.GetService(typeof(IRuleMatcher))!;
-            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, scanner, matcher);
+            var formatType = context.ParseResult.GetValueForOption(formatOption) ?? "table";
+            var service = (IListService)services.GetService(typeof(IListService))!;
+            context.ExitCode = await HandleAsync(configFile?.FullName, formatType, outputType, service);
         });
         return cmd;
     }
 
     public static Task<int> HandleAsync(
         string? configPath,
+        string formatType,
         string outputType,
-        IProcessScanner scanner,
-        IRuleMatcher matcher)
+        IListService listService)
     {
-        var fingerprints = scanner.Scan();
-
-        if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
+        if (formatType.Equals("template", StringComparison.OrdinalIgnoreCase))
         {
-            var template = ConfigurationBuilder.Build(fingerprints);
+            var template = listService.BuildTemplate();
             Console.WriteLine(JsonSerializer.Serialize(template, JsonOutputOptions));
             return Task.FromResult(0);
         }
 
-        var path = ConfigurationLoader.DiscoverPath(configPath);
-        if (path is null)
+        // formatType == "table"
+        var result = listService.GetProcessList(configPath);
+
+        if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
-            AnsiConsole.MarkupLine("[red]Error:[/] No rules.json found. Use --config to specify a path.");
-            return Task.FromResult(2);
+            Console.WriteLine(JsonSerializer.Serialize(result, JsonOutputOptions));
+            return Task.FromResult(result.ExitCode);
         }
 
-        var (loadedRuleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || loadedRuleSet is null)
+        if (result.ErrorMessage is not null)
         {
-            foreach (var err in validation.Errors)
-            {
-                AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
-            }
-
-            return Task.FromResult(2);
+            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(result.ErrorMessage)}");
+            return Task.FromResult(result.ExitCode);
         }
 
-        var matches = matcher.Match(fingerprints, loadedRuleSet);
-        var matchedSet = matches.Select(m => m.Fingerprint).ToHashSet();
-        var destructiveSet = matches
+        var matchedSet = result.Matches.Select(m => m.Fingerprint).ToHashSet();
+        var destructiveSet = result.Matches
             .Where(m => m.Rule.Action is ActionType.Kill or ActionType.Stop or ActionType.Suspend)
             .Select(m => m.Fingerprint)
             .ToHashSet();
@@ -94,10 +87,10 @@ public static class ListCommand
         table.AddColumn("Memory (MB)");
         table.AddColumn("Matched Rule");
 
-        foreach (var fp in fingerprints.OrderBy(f => f.ProcessName))
+        foreach (var fp in result.Fingerprints.OrderBy(f => f.ProcessName))
         {
             var ruleText = string.Join(", ",
-                matches.Where(m => m.Fingerprint == fp).Select(m => m.Rule.Id));
+                result.Matches.Where(m => m.Fingerprint == fp).Select(m => m.Rule.Id));
 
             var style = destructiveSet.Contains(fp) ? "red"
                       : matchedSet.Contains(fp)     ? "yellow"
@@ -113,7 +106,7 @@ public static class ListCommand
         }
 
         AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine($"[grey]{fingerprints.Count} processes, {matches.Count} matches.[/]");
+        AnsiConsole.MarkupLine($"[grey]{result.Fingerprints.Count} processes, {result.Matches.Count} matches.[/]");
 
         return Task.FromResult(0);
     }

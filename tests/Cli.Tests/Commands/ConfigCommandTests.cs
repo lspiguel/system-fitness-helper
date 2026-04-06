@@ -1,5 +1,8 @@
 using FluentAssertions;
+using Moq;
 using SystemFitnessHelper.Cli.Commands;
+using SystemFitnessHelper.Configuration;
+using SystemFitnessHelper.Services;
 using Xunit;
 
 namespace SystemFitnessHelper.Cli.Tests.Commands;
@@ -7,63 +10,72 @@ namespace SystemFitnessHelper.Cli.Tests.Commands;
 public sealed class ConfigCommandTests
 {
     [Fact]
-    public async Task HandleAsync_NonExistentPath_Returns2()
+    public async Task HandleAsync_ServiceReturnsError_Returns2()
     {
-        var result = await ConfigCommand.HandleAsync(@"C:\nonexistent\sfh-test\rules.json");
+        var service = new Mock<IConfigService>();
+        service.Setup(s => s.GetConfig(It.IsAny<string?>()))
+               .Returns(new ConfigResult(null, new ValidationResult(), "No rules.json found.", 2));
+
+        var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
+
         result.Should().Be(2);
     }
 
     [Fact]
-    public async Task HandleAsync_ValidConfig_Returns0()
+    public async Task HandleAsync_ServiceReturnsSuccess_Returns0()
     {
-        var path = WriteTempConfig("""
-            {
-              "rules": [
-                {
-                  "id": "r1",
-                  "enabled": true,
-                  "conditions": [{ "field": "ProcessName", "op": "eq", "value": "notepad" }],
-                  "action": "Kill"
-                }
-              ],
-              "protected": []
-            }
-            """);
+        var ruleSet = new RuleSet();
+        ruleSet.Rules.Add(new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] });
+        var service = new Mock<IConfigService>();
+        service.Setup(s => s.GetConfig(It.IsAny<string?>()))
+               .Returns(new ConfigResult(ruleSet, new ValidationResult(), null, 0));
 
-        var result = await ConfigCommand.HandleAsync(path);
+        var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
+
         result.Should().Be(0);
     }
 
     [Fact]
-    public async Task HandleAsync_InvalidJson_Returns2()
+    public async Task HandleAsync_ServiceReturnsFailure_Returns2()
     {
-        var path = WriteTempConfig("{ not valid json }");
+        var service = new Mock<IConfigService>();
+        service.Setup(s => s.GetConfig(It.IsAny<string?>()))
+               .Returns(new ConfigResult(null, new ValidationResult(), "Config is invalid.", 2));
 
-        var result = await ConfigCommand.HandleAsync(path);
+        var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
+
         result.Should().Be(2);
     }
 
     [Fact]
-    public async Task HandleAsync_DuplicateIds_Returns2()
+    public async Task HandleAsync_JsonOutput_WritesJsonAndReturnsExitCode()
     {
-        var path = WriteTempConfig("""
-            {
-              "rules": [
-                { "id": "dup", "enabled": true, "conditions": [], "action": "None" },
-                { "id": "dup", "enabled": true, "conditions": [], "action": "None" }
-              ],
-              "protected": []
-            }
-            """);
+        var ruleSet = new RuleSet();
+        ruleSet.Rules.Add(new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] });
+        var service = new Mock<IConfigService>();
+        service.Setup(s => s.GetConfig(It.IsAny<string?>()))
+               .Returns(new ConfigResult(ruleSet, new ValidationResult(), null, 0));
 
-        var result = await ConfigCommand.HandleAsync(path);
-        result.Should().Be(2);
+        var (exitCode, json) = await CaptureConsole(() =>
+            ConfigCommand.HandleAsync("any-path", "json", service.Object));
+
+        exitCode.Should().Be(0);
+        json.Should().Contain("\"ExitCode\"");
     }
 
-    private static string WriteTempConfig(string json)
+    private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
     {
-        var path = Path.ChangeExtension(Path.GetTempFileName(), ".json");
-        File.WriteAllText(path, json);
-        return path;
+        var writer = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(writer);
+        try
+        {
+            var exitCode = await action();
+            return (exitCode, writer.ToString().Trim());
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
     }
 }

@@ -3,9 +3,12 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 // </copyright>
 
-using Spectre.Console;
 using System.CommandLine;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Spectre.Console;
 using SystemFitnessHelper.Configuration;
+using SystemFitnessHelper.Services;
 
 namespace SystemFitnessHelper.Cli.Commands;
 
@@ -15,29 +18,42 @@ namespace SystemFitnessHelper.Cli.Commands;
 /// </summary>
 public static class ConfigCommand
 {
-    public static Command Create(IServiceProvider _, Option<FileInfo?> configOption)
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
     {
         var cmd = new Command("config", "Load, validate, and display the rule file");
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
-            context.ExitCode = await HandleAsync(configFile?.FullName);
+            var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
+            var service = (IConfigService)services.GetService(typeof(IConfigService))!;
+            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, service);
         });
         return cmd;
     }
 
-    public static Task<int> HandleAsync(string? configPath)
+    public static Task<int> HandleAsync(string? configPath, string outputType, IConfigService configService)
     {
-        var path = ConfigurationLoader.DiscoverPath(configPath);
-        if (path is null)
+        var result = configService.GetConfig(configPath);
+
+        if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
-            AnsiConsole.MarkupLine("[red]Error:[/] No rules.json found. Use --config to specify a path.");
-            return Task.FromResult(2);
+            Console.WriteLine(JsonSerializer.Serialize(result, JsonOutputOptions));
+            return Task.FromResult(result.ExitCode);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
+        if (result.ErrorMessage is not null)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(result.ErrorMessage)}");
+            return Task.FromResult(result.ExitCode);
+        }
 
-        if (ruleSet is not null)
+        if (result.RuleSet is not null)
         {
             var table = new Table().Border(TableBorder.Rounded);
             table.AddColumn("ID");
@@ -46,7 +62,7 @@ public static class ConfigCommand
             table.AddColumn("Conditions");
             table.AddColumn("Description");
 
-            foreach (var rule in ruleSet.Rules)
+            foreach (var rule in result.RuleSet.Rules)
             {
                 var conditions = string.Join(", ", rule.Conditions.Select(c => $"{c.Field} {c.Op} '{c.Value}'"));
                 var enabledMark = rule.Enabled ? "[green]✓[/]" : "[grey]✗[/]";
@@ -61,23 +77,23 @@ public static class ConfigCommand
 
             AnsiConsole.Write(table);
 
-            if (ruleSet.Protected.Count > 0)
+            if (result.RuleSet.Protected.Count > 0)
             {
                 AnsiConsole.MarkupLine(
-                    $"[grey]Protected services: {Markup.Escape(string.Join(", ", ruleSet.Protected))}[/]");
+                    $"[grey]Protected services: {Markup.Escape(string.Join(", ", result.RuleSet.Protected))}[/]");
             }
         }
 
-        foreach (var err in validation.Errors)
+        foreach (var err in result.Validation.Errors)
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(err)}");
         }
 
-        foreach (var warn in validation.Warnings)
+        foreach (var warn in result.Validation.Warnings)
         {
             AnsiConsole.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warn)}");
         }
 
-        return Task.FromResult(validation.IsValid ? 0 : 2);
+        return Task.FromResult(result.ExitCode);
     }
 }

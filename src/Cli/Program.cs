@@ -13,6 +13,7 @@ using SystemFitnessHelper.Fingerprinting;
 using SystemFitnessHelper.Logging;
 using SystemFitnessHelper.Matching;
 using SystemFitnessHelper.Safety;
+using SystemFitnessHelper.Services;
 
 // Configure Serilog before command execution (pre-parse verbose flag)
 var hasVerbose = args.Any(a => a is "--verbose" or "-v");
@@ -24,6 +25,10 @@ services.AddSingleton<IProcessScanner, WindowsProcessScanner>();
 services.AddSingleton<IRuleMatcher, RuleMatcher>();
 services.AddSingleton<IActionExecutor, WindowsActionExecutor>();
 services.AddSingleton<SafetyGuard>();
+services.AddSingleton<IConfigService, ConfigService>();
+services.AddSingleton<IListService, ListService>();
+services.AddSingleton<IActionsService, ActionsService>();
+services.AddSingleton<IExecuteService, ExecuteService>();
 var sp = services.BuildServiceProvider();
 
 // Global options
@@ -33,19 +38,24 @@ var configOption = new Option<FileInfo?>(
 var verboseOption = new Option<bool>(
     aliases: ["--verbose", "-v"],
     description: "Enable verbose (Debug) logging to console and log file.");
+var outputOption = new Option<string>(
+    aliases: ["--output", "-o"],
+    description: "Output format: 'console' (default) or 'json'.");
+outputOption.SetDefaultValue("console");
 
 // Sub-commands
-var configCmd = ConfigCommand.Create(sp, configOption);
-var listCmd = ListCommand.Create(sp, configOption);
-var actionsCmd = ActionsCommand.Create(sp, configOption);
-var executeCmd = ExecuteCommand.Create(sp, configOption);
+var configCmd = ConfigCommand.Create(sp, configOption, outputOption);
+var listCmd = ListCommand.Create(sp, configOption, outputOption);
+var actionsCmd = ActionsCommand.Create(sp, configOption, outputOption);
+var executeCmd = ExecuteCommand.Create(sp, configOption, outputOption);
 
 var subCommands = new Command[] { configCmd, listCmd, actionsCmd, executeCmd };
-var globalOptions = new Option[] { configOption, verboseOption };
+var globalOptions = new Option[] { configOption, verboseOption, outputOption };
 
 var root = new RootCommand("sfhcli — System Fitness Helper: inspect and manage processes and services");
 root.AddGlobalOption(configOption);
 root.AddGlobalOption(verboseOption);
+root.AddGlobalOption(outputOption);
 
 root.AddCommand(configCmd);
 root.AddCommand(listCmd);
