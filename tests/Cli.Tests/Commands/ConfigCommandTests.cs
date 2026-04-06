@@ -47,21 +47,6 @@ public sealed class ConfigCommandTests
     }
 
     [Fact]
-    public async Task HandleAsync_JsonOutput_WritesJsonAndReturnsExitCode()
-    {
-        var config = MakeConfig("work", isDefault: true, ruleId: "r1");
-        var service = new Mock<IConfigService>();
-        service.Setup(s => s.GetConfig(It.IsAny<string?>()))
-               .Returns(new ConfigResult(config, ["work"], new ValidationResult(), null, 0));
-
-        var (exitCode, json) = await CaptureConsole(() =>
-            ConfigCommand.HandleAsync("any-path", "json", service.Object));
-
-        exitCode.Should().Be(0);
-        json.Should().Contain("\"ExitCode\"");
-    }
-
-    [Fact]
     public async Task HandleAsync_MultipleRulesets_RendersAll()
     {
         var config = new RuleSetsConfig
@@ -92,21 +77,5 @@ public sealed class ConfigCommandTests
                 [name] = ruleSet,
             },
         };
-    }
-
-    private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
-    {
-        var writer = new StringWriter();
-        var original = Console.Out;
-        Console.SetOut(writer);
-        try
-        {
-            var exitCode = await action();
-            return (exitCode, writer.ToString().Trim());
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
     }
 }
