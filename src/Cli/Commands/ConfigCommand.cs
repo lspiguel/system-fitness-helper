@@ -14,7 +14,7 @@ namespace SystemFitnessHelper.Cli.Commands;
 
 /// <summary>
 /// Implements the <c>config</c> CLI sub-command, which loads the rule file, validates it,
-/// and renders the parsed rules together with any validation errors or warnings to the console.
+/// and renders all named rulesets together with any validation errors or warnings to the console.
 /// </summary>
 public static class ConfigCommand
 {
@@ -53,34 +53,43 @@ public static class ConfigCommand
             return Task.FromResult(result.ExitCode);
         }
 
-        if (result.RuleSet is not null)
+        if (result.Config is not null)
         {
-            var table = new Table().Border(TableBorder.Rounded);
-            table.AddColumn("ID");
-            table.AddColumn("Enabled");
-            table.AddColumn("Action");
-            table.AddColumn("Conditions");
-            table.AddColumn("Description");
-
-            foreach (var rule in result.RuleSet.Rules)
+            foreach (var name in result.AvailableRuleSetNames)
             {
-                var conditions = string.Join(", ", rule.Conditions.Select(c => $"{c.Field} {c.Op} '{c.Value}'"));
-                var enabledMark = rule.Enabled ? "[green]✓[/]" : "[grey]✗[/]";
-                var actionColor = rule.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
-                table.AddRow(
-                    Markup.Escape(rule.Id),
-                    enabledMark,
-                    $"[{actionColor}]{rule.Action}[/]",
-                    Markup.Escape(conditions),
-                    Markup.Escape(rule.Description ?? string.Empty));
-            }
+                var ruleSet = result.Config.RuleSets[name];
+                var heading = ruleSet.IsDefault
+                    ? $"Ruleset: {name} [DEFAULT]"
+                    : $"Ruleset: {name}";
+                AnsiConsole.MarkupLine($"[bold]{Markup.Escape(heading)}[/]");
 
-            AnsiConsole.Write(table);
+                var table = new Table().Border(TableBorder.Rounded);
+                table.AddColumn("ID");
+                table.AddColumn("Enabled");
+                table.AddColumn("Action");
+                table.AddColumn("Conditions");
+                table.AddColumn("Description");
 
-            if (result.RuleSet.Protected.Count > 0)
-            {
-                AnsiConsole.MarkupLine(
-                    $"[grey]Protected services: {Markup.Escape(string.Join(", ", result.RuleSet.Protected))}[/]");
+                foreach (var rule in ruleSet.Rules)
+                {
+                    var conditions = string.Join(", ", rule.Conditions.Select(c => $"{c.Field} {c.Op} '{c.Value}'"));
+                    var enabledMark = rule.Enabled ? "[green]✓[/]" : "[grey]✗[/]";
+                    var actionColor = rule.Action is ActionType.Kill or ActionType.Stop ? "red" : "yellow";
+                    table.AddRow(
+                        Markup.Escape(rule.Id),
+                        enabledMark,
+                        $"[{actionColor}]{rule.Action}[/]",
+                        Markup.Escape(conditions),
+                        Markup.Escape(rule.Description ?? string.Empty));
+                }
+
+                AnsiConsole.Write(table);
+
+                if (ruleSet.Protected.Count > 0)
+                {
+                    AnsiConsole.MarkupLine(
+                        $"[grey]Protected services: {Markup.Escape(string.Join(", ", ruleSet.Protected))}[/]");
+                }
             }
         }
 

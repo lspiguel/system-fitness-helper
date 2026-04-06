@@ -14,6 +14,7 @@ public interface IExecuteService
     /// Executes all allowed action plans for matched processes.
     /// </summary>
     /// <param name="configPath">Explicit path to rules.json, or <c>null</c> to auto-discover.</param>
+    /// <param name="ruleSetName">Name of the ruleset to use, or <c>null</c> to use the default.</param>
     /// <returns>An <see cref="ExecuteResult"/> with per-plan outcomes.</returns>
-    ExecuteResult Execute(string? configPath);
+    ExecuteResult Execute(string? configPath, string? ruleSetName);
 }

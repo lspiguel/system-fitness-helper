@@ -42,20 +42,24 @@ var outputOption = new Option<string>(
     aliases: ["--output", "-o"],
     description: "Output format: 'console' (default) or 'json'.");
 outputOption.SetDefaultValue("console");
+var ruleSetOption = new Option<string?>(
+    aliases: ["--ruleset", "-r"],
+    description: "Name of the ruleset to use. If omitted, the default ruleset is used.");
 
 // Sub-commands
 var configCmd = ConfigCommand.Create(sp, configOption, outputOption);
-var listCmd = ListCommand.Create(sp, configOption, outputOption);
-var actionsCmd = ActionsCommand.Create(sp, configOption, outputOption);
-var executeCmd = ExecuteCommand.Create(sp, configOption, outputOption);
+var listCmd = ListCommand.Create(sp, configOption, outputOption, ruleSetOption);
+var actionsCmd = ActionsCommand.Create(sp, configOption, outputOption, ruleSetOption);
+var executeCmd = ExecuteCommand.Create(sp, configOption, outputOption, ruleSetOption);
 
 var subCommands = new Command[] { configCmd, listCmd, actionsCmd, executeCmd };
-var globalOptions = new Option[] { configOption, verboseOption, outputOption };
+var globalOptions = new Option[] { configOption, verboseOption, outputOption, ruleSetOption };
 
 var root = new RootCommand("sfhcli — System Fitness Helper: inspect and manage processes and services");
 root.AddGlobalOption(configOption);
 root.AddGlobalOption(verboseOption);
 root.AddGlobalOption(outputOption);
+root.AddGlobalOption(ruleSetOption);
 
 root.AddCommand(configCmd);
 root.AddCommand(listCmd);

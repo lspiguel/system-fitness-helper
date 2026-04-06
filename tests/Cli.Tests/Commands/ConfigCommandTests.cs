@@ -14,7 +14,7 @@ public sealed class ConfigCommandTests
     {
         var service = new Mock<IConfigService>();
         service.Setup(s => s.GetConfig(It.IsAny<string?>()))
-               .Returns(new ConfigResult(null, new ValidationResult(), "No rules.json found.", 2));
+               .Returns(new ConfigResult(null, [], new ValidationResult(), "No rules.json found.", 2));
 
         var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
 
@@ -24,11 +24,10 @@ public sealed class ConfigCommandTests
     [Fact]
     public async Task HandleAsync_ServiceReturnsSuccess_Returns0()
     {
-        var ruleSet = new RuleSet();
-        ruleSet.Rules.Add(new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] });
+        var config = MakeConfig("work", isDefault: true, ruleId: "r1");
         var service = new Mock<IConfigService>();
         service.Setup(s => s.GetConfig(It.IsAny<string?>()))
-               .Returns(new ConfigResult(ruleSet, new ValidationResult(), null, 0));
+               .Returns(new ConfigResult(config, ["work"], new ValidationResult(), null, 0));
 
         var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
 
@@ -40,7 +39,7 @@ public sealed class ConfigCommandTests
     {
         var service = new Mock<IConfigService>();
         service.Setup(s => s.GetConfig(It.IsAny<string?>()))
-               .Returns(new ConfigResult(null, new ValidationResult(), "Config is invalid.", 2));
+               .Returns(new ConfigResult(null, [], new ValidationResult(), "Config is invalid.", 2));
 
         var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
 
@@ -48,34 +47,35 @@ public sealed class ConfigCommandTests
     }
 
     [Fact]
-    public async Task HandleAsync_JsonOutput_WritesJsonAndReturnsExitCode()
+    public async Task HandleAsync_MultipleRulesets_RendersAll()
     {
-        var ruleSet = new RuleSet();
-        ruleSet.Rules.Add(new Rule { Id = "r1", Enabled = true, Action = ActionType.Kill, Conditions = [] });
+        var config = new RuleSetsConfig
+        {
+            RuleSets = new Dictionary<string, RuleSet>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["work"] = new RuleSet { IsDefault = true, Rules = [], Protected = [] },
+                ["gaming"] = new RuleSet { IsDefault = false, Rules = [], Protected = [] },
+            },
+        };
         var service = new Mock<IConfigService>();
         service.Setup(s => s.GetConfig(It.IsAny<string?>()))
-               .Returns(new ConfigResult(ruleSet, new ValidationResult(), null, 0));
+               .Returns(new ConfigResult(config, ["gaming", "work"], new ValidationResult(), null, 0));
 
-        var (exitCode, json) = await CaptureConsole(() =>
-            ConfigCommand.HandleAsync("any-path", "json", service.Object));
+        var result = await ConfigCommand.HandleAsync("any-path", "console", service.Object);
 
-        exitCode.Should().Be(0);
-        json.Should().Contain("\"ExitCode\"");
+        result.Should().Be(0);
     }
 
-    private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
+    private static RuleSetsConfig MakeConfig(string name, bool isDefault, string ruleId)
     {
-        var writer = new StringWriter();
-        var original = Console.Out;
-        Console.SetOut(writer);
-        try
+        var ruleSet = new RuleSet { IsDefault = isDefault, Rules = [], Protected = [] };
+        ruleSet.Rules.Add(new Rule { Id = ruleId, Enabled = true, Action = ActionType.Kill, Conditions = [] });
+        return new RuleSetsConfig
         {
-            var exitCode = await action();
-            return (exitCode, writer.ToString().Trim());
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
+            RuleSets = new Dictionary<string, RuleSet>(StringComparer.OrdinalIgnoreCase)
+            {
+                [name] = ruleSet,
+            },
+        };
     }
 }

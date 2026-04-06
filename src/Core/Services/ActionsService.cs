@@ -31,23 +31,35 @@ public sealed class ActionsService : IActionsService
     }
 
     /// <inheritdoc/>
-    public ActionsResult GetActions(string? configPath)
+    public ActionsResult GetActions(string? configPath, string? ruleSetName)
     {
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
         {
             return new ActionsResult(
                 Plans: [],
+                ResolvedRuleSetName: null,
                 ErrorMessage: "No rules.json found. Use --config to specify a path.",
                 ExitCode: 2);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        var (config, validation) = ConfigurationLoader.Load(path);
+        if (!validation.IsValid || config is null)
         {
             return new ActionsResult(
                 Plans: [],
+                ResolvedRuleSetName: null,
                 ErrorMessage: string.Join("; ", validation.Errors),
+                ExitCode: 2);
+        }
+
+        var (ruleSet, resolvedName, resolveError) = ConfigurationLoader.ResolveRuleSet(config, ruleSetName);
+        if (resolveError is not null || ruleSet is null)
+        {
+            return new ActionsResult(
+                Plans: [],
+                ResolvedRuleSetName: null,
+                ErrorMessage: resolveError,
                 ExitCode: 2);
         }
 
@@ -71,6 +83,6 @@ public sealed class ActionsService : IActionsService
             })
             .ToList();
 
-        return new ActionsResult(Plans: plans, ErrorMessage: null, ExitCode: 0);
+        return new ActionsResult(Plans: plans, ResolvedRuleSetName: resolvedName, ErrorMessage: null, ExitCode: 0);
     }
 }

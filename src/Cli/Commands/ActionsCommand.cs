@@ -25,22 +25,31 @@ public static class ActionsCommand
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
+    public static Command Create(
+        IServiceProvider services,
+        Option<FileInfo?> configOption,
+        Option<string> outputOption,
+        Option<string?> ruleSetOption)
     {
         var cmd = new Command("actions", "Show what actions would be taken (dry-run)");
         cmd.SetHandler(async context =>
         {
             var configFile = context.ParseResult.GetValueForOption(configOption);
             var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
+            var ruleSetName = context.ParseResult.GetValueForOption(ruleSetOption);
             var service = (IActionsService)services.GetService(typeof(IActionsService))!;
-            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, service);
+            context.ExitCode = await HandleAsync(configFile?.FullName, outputType, ruleSetName, service);
         });
         return cmd;
     }
 
-    public static Task<int> HandleAsync(string? configPath, string outputType, IActionsService actionsService)
+    public static Task<int> HandleAsync(
+        string? configPath,
+        string outputType,
+        string? ruleSetName,
+        IActionsService actionsService)
     {
-        var result = actionsService.GetActions(configPath);
+        var result = actionsService.GetActions(configPath, ruleSetName);
 
         if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
@@ -52,6 +61,11 @@ public static class ActionsCommand
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(result.ErrorMessage)}");
             return Task.FromResult(result.ExitCode);
+        }
+
+        if (result.ResolvedRuleSetName is not null)
+        {
+            AnsiConsole.MarkupLine($"[grey]Using ruleset: {Markup.Escape(result.ResolvedRuleSetName)}[/]");
         }
 
         var table = new Table().Border(TableBorder.Rounded);

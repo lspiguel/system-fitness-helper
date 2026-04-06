@@ -15,23 +15,29 @@ public sealed class ConfigServiceTests
 
         result.ExitCode.Should().Be(2);
         result.ErrorMessage.Should().NotBeNullOrEmpty();
-        result.RuleSet.Should().BeNull();
+        result.Config.Should().BeNull();
+        result.AvailableRuleSetNames.Should().BeEmpty();
     }
 
     [Fact]
-    public void GetConfig_ValidConfig_Returns0WithRules()
+    public void GetConfig_ValidConfig_Returns0WithRuleSetsConfig()
     {
         var path = WriteTempConfig("""
             {
-              "rules": [
-                {
-                  "id": "r1",
-                  "enabled": true,
-                  "conditions": [{ "field": "ProcessName", "op": "eq", "value": "notepad" }],
-                  "action": "Kill"
+              "ruleSets": {
+                "work": {
+                  "isDefault": true,
+                  "rules": [
+                    {
+                      "id": "r1",
+                      "enabled": true,
+                      "conditions": [{ "field": "ProcessName", "op": "eq", "value": "notepad" }],
+                      "action": "Kill"
+                    }
+                  ],
+                  "protected": []
                 }
-              ],
-              "protected": []
+              }
             }
             """);
 
@@ -39,9 +45,29 @@ public sealed class ConfigServiceTests
 
         result.ExitCode.Should().Be(0);
         result.ErrorMessage.Should().BeNull();
-        result.RuleSet.Should().NotBeNull();
-        result.RuleSet!.Rules.Should().HaveCount(1);
+        result.Config.Should().NotBeNull();
+        result.Config!.RuleSets.Should().ContainKey("work");
+        result.Config.RuleSets["work"].Rules.Should().HaveCount(1);
+        result.AvailableRuleSetNames.Should().ContainSingle("work");
         result.Validation.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetConfig_MultipleRulesets_AvailableRuleSetNamesSortedAlphabetically()
+    {
+        var path = WriteTempConfig("""
+            {
+              "ruleSets": {
+                "zebra": { "isDefault": false, "rules": [], "protected": [] },
+                "alpha": { "isDefault": true,  "rules": [], "protected": [] }
+              }
+            }
+            """);
+
+        var result = sut.GetConfig(path);
+
+        result.ExitCode.Should().Be(0);
+        result.AvailableRuleSetNames.Should().Equal("alpha", "zebra");
     }
 
     [Fact]
@@ -57,15 +83,13 @@ public sealed class ConfigServiceTests
     }
 
     [Fact]
-    public void GetConfig_DuplicateIds_Returns2WithValidationErrors()
+    public void GetConfig_NoDefaultRuleset_Returns2WithValidationErrors()
     {
         var path = WriteTempConfig("""
             {
-              "rules": [
-                { "id": "dup", "enabled": true, "conditions": [], "action": "None" },
-                { "id": "dup", "enabled": true, "conditions": [], "action": "None" }
-              ],
-              "protected": []
+              "ruleSets": {
+                "work": { "isDefault": false, "rules": [], "protected": [] }
+              }
             }
             """);
 

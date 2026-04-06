@@ -14,6 +14,7 @@ public interface IActionsService
     /// Evaluates what actions would be taken for all matched processes.
     /// </summary>
     /// <param name="configPath">Explicit path to rules.json, or <c>null</c> to auto-discover.</param>
+    /// <param name="ruleSetName">Name of the ruleset to use, or <c>null</c> to use the default.</param>
     /// <returns>An <see cref="ActionsResult"/> containing all evaluated plans.</returns>
-    ActionsResult GetActions(string? configPath);
+    ActionsResult GetActions(string? configPath, string? ruleSetName);
 }

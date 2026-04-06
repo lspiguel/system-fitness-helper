@@ -25,7 +25,11 @@ public static class ListCommand
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
+    public static Command Create(
+        IServiceProvider services,
+        Option<FileInfo?> configOption,
+        Option<string> outputOption,
+        Option<string?> ruleSetOption)
     {
         var cmd = new Command("list", "Enumerate processes and highlight matched ones");
         var formatOption = new Option<string>(
@@ -39,8 +43,9 @@ public static class ListCommand
             var configFile = context.ParseResult.GetValueForOption(configOption);
             var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
             var formatType = context.ParseResult.GetValueForOption(formatOption) ?? "table";
+            var ruleSetName = context.ParseResult.GetValueForOption(ruleSetOption);
             var service = (IListService)services.GetService(typeof(IListService))!;
-            context.ExitCode = await HandleAsync(configFile?.FullName, formatType, outputType, service);
+            context.ExitCode = await HandleAsync(configFile?.FullName, formatType, outputType, ruleSetName, service);
         });
         return cmd;
     }
@@ -49,6 +54,7 @@ public static class ListCommand
         string? configPath,
         string formatType,
         string outputType,
+        string? ruleSetName,
         IListService listService)
     {
         if (formatType.Equals("template", StringComparison.OrdinalIgnoreCase))
@@ -59,7 +65,7 @@ public static class ListCommand
         }
 
         // formatType == "table"
-        var result = listService.GetProcessList(configPath);
+        var result = listService.GetProcessList(configPath, ruleSetName);
 
         if (outputType.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
@@ -71,6 +77,11 @@ public static class ListCommand
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(result.ErrorMessage)}");
             return Task.FromResult(result.ExitCode);
+        }
+
+        if (result.ResolvedRuleSetName is not null)
+        {
+            AnsiConsole.MarkupLine($"[grey]Using ruleset: {Markup.Escape(result.ResolvedRuleSetName)}[/]");
         }
 
         var matchedSet = result.Matches.Select(m => m.Fingerprint).ToHashSet();

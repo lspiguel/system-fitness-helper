@@ -11,5 +11,6 @@ namespace SystemFitnessHelper.Services;
 [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
 public sealed record ActionsResult(
     IReadOnlyList<ActionPlanView> Plans,
+    string? ResolvedRuleSetName,
     string? ErrorMessage,
     int ExitCode);

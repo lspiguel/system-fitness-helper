@@ -15,5 +15,6 @@ namespace SystemFitnessHelper.Services;
 public sealed record ProcessListResult(
     IReadOnlyList<ProcessFingerprint> Fingerprints,
     IReadOnlyList<MatchResult> Matches,
+    string? ResolvedRuleSetName,
     string? ErrorMessage,
     int ExitCode);

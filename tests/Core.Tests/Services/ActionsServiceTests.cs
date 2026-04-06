@@ -17,11 +17,12 @@ public sealed class ActionsServiceTests
         var matcher = new Mock<IRuleMatcher>();
         var sut = new ActionsService(scanner.Object, matcher.Object);
 
-        var result = sut.GetActions(@"C:\nonexistent\sfh-test\rules.json");
+        var result = sut.GetActions(@"C:\nonexistent\sfh-test\rules.json", null);
 
         result.ExitCode.Should().Be(2);
         result.ErrorMessage.Should().NotBeNullOrEmpty();
         result.Plans.Should().BeEmpty();
+        result.ResolvedRuleSetName.Should().BeNull();
     }
 
     [Fact]
@@ -35,10 +36,11 @@ public sealed class ActionsServiceTests
                .Returns([]);
         var sut = new ActionsService(scanner.Object, matcher.Object);
 
-        var result = sut.GetActions(path);
+        var result = sut.GetActions(path, null);
 
         result.ExitCode.Should().Be(0);
         result.Plans.Should().BeEmpty();
+        result.ResolvedRuleSetName.Should().Be("default");
     }
 
     [Fact]
@@ -54,7 +56,7 @@ public sealed class ActionsServiceTests
                .Returns([new MatchResult(fp, rule)]);
         var sut = new ActionsService(scanner.Object, matcher.Object);
 
-        var result = sut.GetActions(path);
+        var result = sut.GetActions(path, null);
 
         result.ExitCode.Should().Be(0);
         result.Plans.Should().HaveCount(1);
@@ -75,7 +77,7 @@ public sealed class ActionsServiceTests
                .Returns([new MatchResult(fp, rule)]);
         var sut = new ActionsService(scanner.Object, matcher.Object);
 
-        var result = sut.GetActions(path);
+        var result = sut.GetActions(path, null);
 
         result.ExitCode.Should().Be(0);   // actions never fails on blocked items
         result.Plans[0].Blocked.Should().BeTrue();
@@ -85,11 +87,16 @@ public sealed class ActionsServiceTests
     [Fact]
     public void GetActions_UserProtectedService_IsBlocked()
     {
-        // Config declares "MyService" as protected
+        // Config declares "MyService" as protected in the default ruleset
         var path = WriteTempConfig("""
             {
-              "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "Stop" }],
-              "protected": ["MyService"]
+              "ruleSets": {
+                "default": {
+                  "isDefault": true,
+                  "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "Stop" }],
+                  "protected": ["MyService"]
+                }
+              }
             }
             """);
         var fp = MakeServiceFp("MyService");
@@ -101,10 +108,42 @@ public sealed class ActionsServiceTests
                .Returns([new MatchResult(fp, rule)]);
         var sut = new ActionsService(scanner.Object, matcher.Object);
 
-        var result = sut.GetActions(path);
+        var result = sut.GetActions(path, null);
 
         result.Plans[0].Blocked.Should().BeTrue();
         result.Plans[0].BlockReason.Should().Contain("user-defined");
+    }
+
+    [Fact]
+    public void GetActions_UnknownRulesetName_Returns2WithError()
+    {
+        var path = WriteTempConfig();
+        var scanner = new Mock<IProcessScanner>();
+        var matcher = new Mock<IRuleMatcher>();
+        var sut = new ActionsService(scanner.Object, matcher.Object);
+
+        var result = sut.GetActions(path, "nonexistent");
+
+        result.ExitCode.Should().Be(2);
+        result.ErrorMessage.Should().Contain("nonexistent");
+        result.ResolvedRuleSetName.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetActions_NamedRulesetExists_UsesNamedRulesetAndPopulatesResolvedName()
+    {
+        var path = WriteTempTwoRulesetConfig();
+        var scanner = new Mock<IProcessScanner>();
+        scanner.Setup(s => s.Scan()).Returns([]);
+        var matcher = new Mock<IRuleMatcher>();
+        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
+               .Returns([]);
+        var sut = new ActionsService(scanner.Object, matcher.Object);
+
+        var result = sut.GetActions(path, "gaming");
+
+        result.ExitCode.Should().Be(0);
+        result.ResolvedRuleSetName.Should().Be("gaming");
     }
 
     private static ProcessFingerprint MakeProcessFp(string name) =>
@@ -114,7 +153,24 @@ public sealed class ActionsServiceTests
         new(5678, "svchost", null, null, null, 0, null, true, serviceName, serviceName, null);
 
     private static string WriteTempConfig() => WriteTempConfig("""
-        { "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "None" }], "protected": [] }
+        {
+          "ruleSets": {
+            "default": {
+              "isDefault": true,
+              "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "None" }],
+              "protected": []
+            }
+          }
+        }
+        """);
+
+    private static string WriteTempTwoRulesetConfig() => WriteTempConfig("""
+        {
+          "ruleSets": {
+            "default": { "isDefault": true,  "rules": [], "protected": [] },
+            "gaming":  { "isDefault": false, "rules": [], "protected": [] }
+          }
+        }
         """);
 
     private static string WriteTempConfig(string json)

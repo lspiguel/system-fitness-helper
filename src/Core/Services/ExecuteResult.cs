@@ -12,5 +12,6 @@ namespace SystemFitnessHelper.Services;
 public sealed record ExecuteResult(
     IReadOnlyList<ActionResultView> Results,
     bool AnyFailed,
+    string? ResolvedRuleSetName,
     string? ErrorMessage,
     int ExitCode);

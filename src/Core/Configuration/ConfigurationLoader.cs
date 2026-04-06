@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 namespace SystemFitnessHelper.Configuration;
 
 /// <summary>
-/// Loads and validates a <see cref="RuleSet"/> from a JSON file.
+/// Loads and validates a <see cref="RuleSetsConfig"/> from a JSON file.
 /// Discovery order when no explicit path is given: <c>%APPDATA%\SystemFitnessHelper\rules.json</c>,
 /// then <c>rules.json</c> next to the executable.
 /// </summary>
@@ -21,7 +21,7 @@ public static class ConfigurationLoader
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static (RuleSet? RuleSet, ValidationResult Validation) Load(string path)
+    public static (RuleSetsConfig? Config, ValidationResult Validation) Load(string path)
     {
         var validation = new ValidationResult();
 
@@ -31,11 +31,11 @@ public static class ConfigurationLoader
             return (null, validation);
         }
 
-        RuleSet? ruleSet;
+        RuleSetsConfig? config;
         try
         {
             var json = File.ReadAllText(path);
-            ruleSet = JsonSerializer.Deserialize<RuleSet>(json, JsonOptions);
+            config = JsonSerializer.Deserialize<RuleSetsConfig>(json, JsonOptions);
         }
         catch (JsonException ex)
         {
@@ -43,14 +43,40 @@ public static class ConfigurationLoader
             return (null, validation);
         }
 
-        if (ruleSet is null)
+        if (config is null)
         {
             validation.AddError("Config file is empty or null.");
             return (null, validation);
         }
 
-        Validate(ruleSet, validation);
-        return (ruleSet, validation);
+        ValidateConfig(config, validation);
+        return (config, validation);
+    }
+
+    public static (RuleSet? RuleSet, string? ResolvedName, string? ErrorMessage) ResolveRuleSet(
+        RuleSetsConfig config, string? ruleSetName)
+    {
+        if (ruleSetName is not null)
+        {
+            if (!config.RuleSets.TryGetValue(ruleSetName, out var named))
+            {
+                var available = string.Join(", ", config.RuleSets.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase));
+                return (null, null, $"Ruleset '{ruleSetName}' not found. Available: {available}.");
+            }
+
+            return (named, ruleSetName, null);
+        }
+
+        // Find the default entry using the original key name preserved in the dictionary
+        foreach (var kvp in config.RuleSets)
+        {
+            if (kvp.Value.IsDefault)
+            {
+                return (kvp.Value, kvp.Key, null);
+            }
+        }
+
+        return (null, null, "No default ruleset is defined.");
     }
 
     public static string? DiscoverPath(string? explicitPath)
@@ -79,7 +105,40 @@ public static class ConfigurationLoader
         return null;
     }
 
-    private static void Validate(RuleSet ruleSet, ValidationResult validation)
+    private static void ValidateConfig(RuleSetsConfig config, ValidationResult validation)
+    {
+        if (config.RuleSets.Count == 0)
+        {
+            validation.AddError("No rulesets defined. The 'ruleSets' dictionary must contain at least one entry.");
+            return;
+        }
+
+        var defaultCount = config.RuleSets.Values.Count(rs => rs.IsDefault);
+        if (defaultCount == 0)
+        {
+            validation.AddError("No default ruleset is defined. Exactly one ruleset must have 'isDefault: true'.");
+        }
+        else if (defaultCount > 1)
+        {
+            validation.AddError($"Multiple default rulesets defined ({defaultCount}). Exactly one ruleset must have 'isDefault: true'.");
+        }
+
+        foreach (var kvp in config.RuleSets)
+        {
+            var name = kvp.Key;
+            var ruleSet = kvp.Value;
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                validation.AddError("A ruleset has an empty or whitespace key name.");
+                continue;
+            }
+
+            ValidateRuleSet(name, ruleSet, validation);
+        }
+    }
+
+    private static void ValidateRuleSet(string ruleSetName, RuleSet ruleSet, ValidationResult validation)
     {
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var knownOps = new HashSet<string> { "eq", "neq", "regex", "gt", "lt" };
@@ -88,30 +147,30 @@ public static class ConfigurationLoader
         {
             if (string.IsNullOrWhiteSpace(rule.Id))
             {
-                validation.AddError("A rule is missing a required 'id' field.");
+                validation.AddError($"Ruleset '{ruleSetName}': a rule is missing a required 'id' field.");
                 continue;
             }
 
             if (!seenIds.Add(rule.Id))
             {
-                validation.AddError($"Duplicate rule ID: '{rule.Id}'.");
+                validation.AddError($"Ruleset '{ruleSetName}': Duplicate rule ID: '{rule.Id}'.");
             }
 
             if (rule.Conditions.Count == 0)
             {
-                validation.AddWarning($"Rule '{rule.Id}' has no conditions and will never match.");
+                validation.AddWarning($"Ruleset '{ruleSetName}': rule '{rule.Id}' has no conditions and will never match.");
             }
 
             foreach (var condition in rule.Conditions)
             {
                 if (string.IsNullOrWhiteSpace(condition.Field))
                 {
-                    validation.AddError($"Rule '{rule.Id}': a condition is missing the 'field' property.");
+                    validation.AddError($"Ruleset '{ruleSetName}': rule '{rule.Id}': a condition is missing the 'field' property.");
                 }
 
                 if (!knownOps.Contains(condition.Op.ToLowerInvariant()))
                 {
-                    validation.AddWarning($"Rule '{rule.Id}': unknown operator '{condition.Op}'.");
+                    validation.AddWarning($"Ruleset '{ruleSetName}': rule '{rule.Id}': unknown operator '{condition.Op}'.");
                 }
             }
 
@@ -122,7 +181,7 @@ public static class ConfigurationLoader
                 if (targetsServiceField)
                 {
                     validation.AddWarning(
-                        $"Rule '{rule.Id}' uses Kill on a service-targeted rule. Use Stop instead for services.");
+                        $"Ruleset '{ruleSetName}': rule '{rule.Id}' uses Kill on a service-targeted rule. Use Stop instead for services.");
                 }
             }
         }
