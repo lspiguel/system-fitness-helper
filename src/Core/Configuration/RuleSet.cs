@@ -12,6 +12,11 @@ namespace SystemFitnessHelper.Configuration;
 public sealed class RuleSet
 {
     /// <summary>
+    /// Gets a value indicating whether this ruleset is the default one selected when <c>--ruleset</c> is omitted.
+    /// </summary>
+    public bool IsDefault { get; init; } = false;
+
+    /// <summary>
     /// Gets the collection of rules associated with this instance.
     /// </summary>
     public List<Rule> Rules { get; init; } = [];

@@ -12,7 +12,8 @@ namespace SystemFitnessHelper.Services;
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "Used as a record.")]
 public sealed record ConfigResult(
-    RuleSet? RuleSet,
+    RuleSetsConfig? Config,
+    IReadOnlyList<string> AvailableRuleSetNames,
     ValidationResult Validation,
     string? ErrorMessage,
     int ExitCode);

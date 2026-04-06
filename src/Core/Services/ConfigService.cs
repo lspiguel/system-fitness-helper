@@ -19,15 +19,21 @@ public sealed class ConfigService : IConfigService
         if (path is null)
         {
             return new ConfigResult(
-                RuleSet: null,
+                Config: null,
+                AvailableRuleSetNames: [],
                 Validation: new ValidationResult(),
                 ErrorMessage: "No rules.json found. Use --config to specify a path.",
                 ExitCode: 2);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
+        var (config, validation) = ConfigurationLoader.Load(path);
+        var names = config is not null
+            ? config.RuleSets.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList()
+            : (IReadOnlyList<string>)[];
+
         return new ConfigResult(
-            RuleSet: ruleSet,
+            Config: config,
+            AvailableRuleSetNames: names,
             Validation: validation,
             ErrorMessage: null,
             ExitCode: validation.IsValid ? 0 : 2);

@@ -28,7 +28,11 @@ public static class ExecuteCommand
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static Command Create(IServiceProvider services, Option<FileInfo?> configOption, Option<string> outputOption)
+    public static Command Create(
+        IServiceProvider services,
+        Option<FileInfo?> configOption,
+        Option<string> outputOption,
+        Option<string?> ruleSetOption)
     {
         var yesOption = new Option<bool>(
             aliases: ["--yes", "-y"],
@@ -40,10 +44,11 @@ public static class ExecuteCommand
             var configFile = context.ParseResult.GetValueForOption(configOption);
             var outputType = context.ParseResult.GetValueForOption(outputOption) ?? "console";
             var yes = context.ParseResult.GetValueForOption(yesOption);
+            var ruleSetName = context.ParseResult.GetValueForOption(ruleSetOption);
             var actionsService = (IActionsService)services.GetService(typeof(IActionsService))!;
             var executeService = (IExecuteService)services.GetService(typeof(IExecuteService))!;
             context.ExitCode = await HandleAsync(
-                configFile?.FullName, outputType, yes, actionsService, executeService);
+                configFile?.FullName, outputType, yes, ruleSetName, actionsService, executeService);
         });
         return cmd;
     }
@@ -52,6 +57,7 @@ public static class ExecuteCommand
         string? configPath,
         string outputType,
         bool skipPrompt,
+        string? ruleSetName,
         IActionsService actionsService,
         IExecuteService executeService,
         Func<bool>? isElevated = null,
@@ -68,13 +74,13 @@ public static class ExecuteCommand
         // In JSON mode, skip prompt (non-interactive) and go straight to execution
         if (jsonMode)
         {
-            var execResult = executeService.Execute(configPath);
+            var execResult = executeService.Execute(configPath, ruleSetName);
             Console.WriteLine(JsonSerializer.Serialize(execResult, JsonOutputOptions));
             return Task.FromResult(execResult.ExitCode);
         }
 
         // Console mode: show plan, prompt, then execute
-        var actionsResult = actionsService.GetActions(configPath);
+        var actionsResult = actionsService.GetActions(configPath, ruleSetName);
         if (actionsResult.ErrorMessage is not null)
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(actionsResult.ErrorMessage)}");
@@ -85,6 +91,11 @@ public static class ExecuteCommand
         {
             AnsiConsole.MarkupLine("[grey]No actions to execute.[/]");
             return Task.FromResult(0);
+        }
+
+        if (actionsResult.ResolvedRuleSetName is not null)
+        {
+            AnsiConsole.MarkupLine($"[grey]Using ruleset: {Markup.Escape(actionsResult.ResolvedRuleSetName)}[/]");
         }
 
         var planTable = new Table().Border(TableBorder.Rounded);
@@ -115,7 +126,7 @@ public static class ExecuteCommand
             return Task.FromResult(0);
         }
 
-        var executeResult = executeService.Execute(configPath);
+        var executeResult = executeService.Execute(configPath, ruleSetName);
 
         var resultTable = new Table().Border(TableBorder.Rounded);
         resultTable.AddColumn("Process");

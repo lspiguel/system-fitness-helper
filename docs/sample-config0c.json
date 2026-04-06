@@ -1,6 +1,6 @@
 {
   "ruleSets": {
-    "default": {
+    "work": {
       "isDefault": true,
       "rules": [
         {
@@ -36,6 +36,11 @@
       "protected": [
         "wuauserv", "WinDefend", "lsass"
       ]
+    },
+    "gaming": {
+      "isDefault": false,
+      "rules": [],
+      "protected": []
     }
   }
 }

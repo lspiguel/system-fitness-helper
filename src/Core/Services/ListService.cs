@@ -29,7 +29,7 @@ public sealed class ListService : IListService
     }
 
     /// <inheritdoc/>
-    public ProcessListResult GetProcessList(string? configPath)
+    public ProcessListResult GetProcessList(string? configPath, string? ruleSetName)
     {
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
@@ -37,17 +37,30 @@ public sealed class ListService : IListService
             return new ProcessListResult(
                 Fingerprints: [],
                 Matches: [],
+                ResolvedRuleSetName: null,
                 ErrorMessage: "No rules.json found. Use --config to specify a path.",
                 ExitCode: 2);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        var (config, validation) = ConfigurationLoader.Load(path);
+        if (!validation.IsValid || config is null)
         {
             return new ProcessListResult(
                 Fingerprints: [],
                 Matches: [],
+                ResolvedRuleSetName: null,
                 ErrorMessage: string.Join("; ", validation.Errors),
+                ExitCode: 2);
+        }
+
+        var (ruleSet, resolvedName, resolveError) = ConfigurationLoader.ResolveRuleSet(config, ruleSetName);
+        if (resolveError is not null || ruleSet is null)
+        {
+            return new ProcessListResult(
+                Fingerprints: [],
+                Matches: [],
+                ResolvedRuleSetName: null,
+                ErrorMessage: resolveError,
                 ExitCode: 2);
         }
 
@@ -56,6 +69,7 @@ public sealed class ListService : IListService
         return new ProcessListResult(
             Fingerprints: fingerprints,
             Matches: matches,
+            ResolvedRuleSetName: resolvedName,
             ErrorMessage: null,
             ExitCode: 0);
     }

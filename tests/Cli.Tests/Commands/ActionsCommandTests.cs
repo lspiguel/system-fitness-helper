@@ -13,10 +13,10 @@ public sealed class ActionsCommandTests
     public async Task HandleAsync_ErrorResult_Returns2()
     {
         var service = new Mock<IActionsService>();
-        service.Setup(s => s.GetActions(It.IsAny<string?>()))
-               .Returns(new ActionsResult([], "No rules.json found.", 2));
+        service.Setup(s => s.GetActions(It.IsAny<string?>(), It.IsAny<string?>()))
+               .Returns(new ActionsResult([], null, "No rules.json found.", 2));
 
-        var result = await ActionsCommand.HandleAsync("any-path", "console", service.Object);
+        var result = await ActionsCommand.HandleAsync("any-path", "console", null, service.Object);
 
         result.Should().Be(2);
     }
@@ -25,10 +25,10 @@ public sealed class ActionsCommandTests
     public async Task HandleAsync_NoPlans_Returns0()
     {
         var service = new Mock<IActionsService>();
-        service.Setup(s => s.GetActions(It.IsAny<string?>()))
-               .Returns(new ActionsResult([], null, 0));
+        service.Setup(s => s.GetActions(It.IsAny<string?>(), It.IsAny<string?>()))
+               .Returns(new ActionsResult([], "work", null, 0));
 
-        var result = await ActionsCommand.HandleAsync("any-path", "console", service.Object);
+        var result = await ActionsCommand.HandleAsync("any-path", "console", null, service.Object);
 
         result.Should().Be(0);
     }
@@ -42,11 +42,24 @@ public sealed class ActionsCommandTests
             new ActionPlanView("svchost",  5678, "MyService", "r2", ActionType.Stop, true, "Protected service."),
         };
         var service = new Mock<IActionsService>();
-        service.Setup(s => s.GetActions(It.IsAny<string?>()))
-               .Returns(new ActionsResult(plans, null, 0));
+        service.Setup(s => s.GetActions(It.IsAny<string?>(), It.IsAny<string?>()))
+               .Returns(new ActionsResult(plans, "work", null, 0));
 
-        var result = await ActionsCommand.HandleAsync("any-path", "console", service.Object);
+        var result = await ActionsCommand.HandleAsync("any-path", "console", null, service.Object);
 
         result.Should().Be(0);   // actions command never fails on blocked items
+    }
+
+    [Fact]
+    public async Task HandleAsync_PassesRuleSetNameToService()
+    {
+        var service = new Mock<IActionsService>();
+        service.Setup(s => s.GetActions(It.IsAny<string?>(), "gaming"))
+               .Returns(new ActionsResult([], "gaming", null, 0));
+
+        var result = await ActionsCommand.HandleAsync("any-path", "console", "gaming", service.Object);
+
+        result.Should().Be(0);
+        service.Verify(s => s.GetActions(It.IsAny<string?>(), "gaming"), Times.Once);
     }
 }

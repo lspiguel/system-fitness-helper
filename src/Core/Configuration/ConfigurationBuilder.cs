@@ -55,6 +55,31 @@ public static class ConfigurationBuilder
         return new RuleSet { Rules = rules };
     }
 
+    /// <summary>
+    /// Builds a ready-to-use <see cref="RuleSetsConfig"/> with a single named entry containing the template rules.
+    /// Intended for initial installer drops and tooling that needs a complete multi-ruleset file from scratch.
+    /// </summary>
+    /// <param name="fingerprints">List of process fingerprints, usually the result of a scan.</param>
+    /// <param name="ruleSetName">The name to assign to the single entry. Defaults to <c>"default"</c>.</param>
+    /// <returns>A <see cref="RuleSetsConfig"/> with one entry keyed by <paramref name="ruleSetName"/>, <see cref="RuleSet.IsDefault"/> set to <c>true</c>.</returns>
+    public static RuleSetsConfig BuildConfig(IReadOnlyList<ProcessFingerprint> fingerprints, string ruleSetName = "default")
+    {
+        var ruleSet = Build(fingerprints);
+        var isDefaultRuleSet = new RuleSet
+        {
+            IsDefault = true,
+            Rules = ruleSet.Rules,
+            Protected = ruleSet.Protected,
+        };
+        return new RuleSetsConfig
+        {
+            RuleSets = new Dictionary<string, RuleSet>(StringComparer.OrdinalIgnoreCase)
+            {
+                [ruleSetName] = isDefaultRuleSet,
+            },
+        };
+    }
+
     private static List<FingerprintCondition> BuildConditions(ProcessFingerprint fp)
     {
         if (fp.IsService)

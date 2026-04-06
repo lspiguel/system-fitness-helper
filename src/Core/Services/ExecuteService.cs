@@ -35,7 +35,7 @@ public sealed class ExecuteService : IExecuteService
     }
 
     /// <inheritdoc/>
-    public ExecuteResult Execute(string? configPath)
+    public ExecuteResult Execute(string? configPath, string? ruleSetName)
     {
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
@@ -43,17 +43,30 @@ public sealed class ExecuteService : IExecuteService
             return new ExecuteResult(
                 Results: [],
                 AnyFailed: false,
+                ResolvedRuleSetName: null,
                 ErrorMessage: "No rules.json found. Use --config to specify a path.",
                 ExitCode: 2);
         }
 
-        var (ruleSet, validation) = ConfigurationLoader.Load(path);
-        if (!validation.IsValid || ruleSet is null)
+        var (config, validation) = ConfigurationLoader.Load(path);
+        if (!validation.IsValid || config is null)
         {
             return new ExecuteResult(
                 Results: [],
                 AnyFailed: false,
+                ResolvedRuleSetName: null,
                 ErrorMessage: string.Join("; ", validation.Errors),
+                ExitCode: 2);
+        }
+
+        var (ruleSet, resolvedName, resolveError) = ConfigurationLoader.ResolveRuleSet(config, ruleSetName);
+        if (resolveError is not null || ruleSet is null)
+        {
+            return new ExecuteResult(
+                Results: [],
+                AnyFailed: false,
+                ResolvedRuleSetName: null,
+                ErrorMessage: resolveError,
                 ExitCode: 2);
         }
 
@@ -108,6 +121,7 @@ public sealed class ExecuteService : IExecuteService
         return new ExecuteResult(
             Results: results,
             AnyFailed: anyFailed,
+            ResolvedRuleSetName: resolvedName,
             ErrorMessage: null,
             ExitCode: anyFailed ? 1 : 0);
     }

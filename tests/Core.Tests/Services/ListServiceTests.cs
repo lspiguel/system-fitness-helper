@@ -17,16 +17,17 @@ public sealed class ListServiceTests
         var matcher = new Mock<IRuleMatcher>();
         var sut = new ListService(scanner.Object, matcher.Object);
 
-        var result = sut.GetProcessList(@"C:\nonexistent\sfh-test\rules.json");
+        var result = sut.GetProcessList(@"C:\nonexistent\sfh-test\rules.json", null);
 
         result.ExitCode.Should().Be(2);
         result.ErrorMessage.Should().NotBeNullOrEmpty();
         result.Fingerprints.Should().BeEmpty();
         result.Matches.Should().BeEmpty();
+        result.ResolvedRuleSetName.Should().BeNull();
     }
 
     [Fact]
-    public void GetProcessList_ValidConfig_NoMatches_Returns0()
+    public void GetProcessList_ValidConfig_NoMatches_Returns0WithResolvedName()
     {
         var path = WriteTempConfig();
         var scanner = new Mock<IProcessScanner>();
@@ -36,12 +37,13 @@ public sealed class ListServiceTests
                .Returns([]);
         var sut = new ListService(scanner.Object, matcher.Object);
 
-        var result = sut.GetProcessList(path);
+        var result = sut.GetProcessList(path, null);
 
         result.ExitCode.Should().Be(0);
         result.ErrorMessage.Should().BeNull();
         result.Fingerprints.Should().BeEmpty();
         result.Matches.Should().BeEmpty();
+        result.ResolvedRuleSetName.Should().Be("default");
     }
 
     [Fact]
@@ -57,11 +59,43 @@ public sealed class ListServiceTests
                .Returns([new MatchResult(fp, rule)]);
         var sut = new ListService(scanner.Object, matcher.Object);
 
-        var result = sut.GetProcessList(path);
+        var result = sut.GetProcessList(path, null);
 
         result.ExitCode.Should().Be(0);
         result.Fingerprints.Should().HaveCount(1);
         result.Matches.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GetProcessList_UnknownRulesetName_Returns2WithError()
+    {
+        var path = WriteTempConfig();
+        var scanner = new Mock<IProcessScanner>();
+        var matcher = new Mock<IRuleMatcher>();
+        var sut = new ListService(scanner.Object, matcher.Object);
+
+        var result = sut.GetProcessList(path, "nonexistent");
+
+        result.ExitCode.Should().Be(2);
+        result.ErrorMessage.Should().Contain("nonexistent");
+        result.ResolvedRuleSetName.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetProcessList_NamedRulesetExists_UsesNamedRuleset()
+    {
+        var path = WriteTempTwoRulesetConfig();
+        var scanner = new Mock<IProcessScanner>();
+        scanner.Setup(s => s.Scan()).Returns([]);
+        var matcher = new Mock<IRuleMatcher>();
+        matcher.Setup(m => m.Match(It.IsAny<IReadOnlyList<ProcessFingerprint>>(), It.IsAny<RuleSet>()))
+               .Returns([]);
+        var sut = new ListService(scanner.Object, matcher.Object);
+
+        var result = sut.GetProcessList(path, "gaming");
+
+        result.ExitCode.Should().Be(0);
+        result.ResolvedRuleSetName.Should().Be("gaming");
     }
 
     [Fact]
@@ -83,7 +117,24 @@ public sealed class ListServiceTests
         new(1234, name, null, null, null, 0, null, false, null, null, null);
 
     private static string WriteTempConfig() => WriteTempConfig("""
-        { "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "None" }], "protected": [] }
+        {
+          "ruleSets": {
+            "default": {
+              "isDefault": true,
+              "rules": [{ "id": "r1", "enabled": true, "conditions": [], "action": "None" }],
+              "protected": []
+            }
+          }
+        }
+        """);
+
+    private static string WriteTempTwoRulesetConfig() => WriteTempConfig("""
+        {
+          "ruleSets": {
+            "default": { "isDefault": true,  "rules": [], "protected": [] },
+            "gaming":  { "isDefault": false, "rules": [], "protected": [] }
+          }
+        }
         """);
 
     private static string WriteTempConfig(string json)

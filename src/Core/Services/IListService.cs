@@ -16,8 +16,9 @@ public interface IListService
     /// Scans running processes and matches them against the loaded rule set.
     /// </summary>
     /// <param name="configPath">Explicit path to rules.json, or <c>null</c> to auto-discover.</param>
+    /// <param name="ruleSetName">Name of the ruleset to use, or <c>null</c> to use the default.</param>
     /// <returns>A <see cref="ProcessListResult"/> with all fingerprints and matches.</returns>
-    ProcessListResult GetProcessList(string? configPath);
+    ProcessListResult GetProcessList(string? configPath, string? ruleSetName);
 
     /// <summary>
     /// Builds a RuleSet template from the currently running processes (no config required).
