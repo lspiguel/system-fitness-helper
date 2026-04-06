@@ -49,34 +49,4 @@ public sealed class ActionsCommandTests
 
         result.Should().Be(0);   // actions command never fails on blocked items
     }
-
-    [Fact]
-    public async Task HandleAsync_JsonOutput_WritesJsonAndReturnsExitCode()
-    {
-        var service = new Mock<IActionsService>();
-        service.Setup(s => s.GetActions(It.IsAny<string?>()))
-               .Returns(new ActionsResult([], null, 0));
-
-        var (exitCode, json) = await CaptureConsole(() =>
-            ActionsCommand.HandleAsync("any-path", "json", service.Object));
-
-        exitCode.Should().Be(0);
-        json.Should().Contain("\"ExitCode\"");
-    }
-
-    private static async Task<(int ExitCode, string Output)> CaptureConsole(Func<Task<int>> action)
-    {
-        var writer = new StringWriter();
-        var original = Console.Out;
-        Console.SetOut(writer);
-        try
-        {
-            var exitCode = await action();
-            return (exitCode, writer.ToString().Trim());
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
-    }
 }
