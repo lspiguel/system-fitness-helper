@@ -1,9 +1,16 @@
 <Solution>
   <Project Path="Core/Core.csproj" />
   <Project Path="Cli/SystemFitnessHelper.Cli.csproj" />
+  <Project Path="Ipc/SystemFitnessHelper.Ipc.csproj" />
+  <Project Path="Service/SystemFitnessHelper.Service.csproj" />
+  <Project Path="TrayApp/SystemFitnessHelper.TrayApp.csproj" />
+  <Project Path="Ui/SystemFitnessHelper.Ui.csproj" />
+  <Project Path="Installer/SystemFitnessHelper.Installer.csproj" />
   <Project Path="..\tests\Core.Tests\SystemFitnessHelper.Core.Tests.csproj" />
+  <Project Path="..\tests\Cli.Tests\SystemFitnessHelper.Cli.Tests.csproj" />
+  <Project Path="..\tests\Ipc.Tests\SystemFitnessHelper.Ipc.Tests.csproj" />
+  <Project Path="..\tests\Service.Tests\SystemFitnessHelper.Service.Tests.csproj" />
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
   </Folder>
-  <Project Path="..\tests\Cli.Tests\SystemFitnessHelper.Cli.Tests.csproj" />
 </Solution>
