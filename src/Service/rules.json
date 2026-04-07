@@ -1,0 +1,551 @@
+{
+  "ruleSets": {
+    "default": {
+      "isDefault": true,
+      "rules": [
+
+        {
+          "id": "ashbackuppb",
+          "description": "ashampoo backup service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "ashbackuppb"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "telemetry-diagtrack",
+          "description": "Connected User Experiences and Telemetry",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "DiagTrack"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "telemetry-dps",
+          "description": "Diagnostic Policy Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "DPS"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "telemetry-wdisystemhost",
+          "description": "Diagnostic System Host",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "WdiSystemHost"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "telemetry-wap-push",
+          "description": "WAP Push Message Routing Service (telemetry)",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "dmwappushservice"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "telemetry-msft-ducs",
+          "description": "Microsoft Usage and Quality Insights",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "MSFT_DUCS"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "update-delivery-opt",
+          "description": "Delivery Optimization — disabled, may block updates",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "DoSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "update-orchestrator",
+          "description": "Update Orchestrator Service — disabled, may block updates",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "UsoSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "update-trusted-installer",
+          "description": "Windows Modules Installer — disabled, may block updates",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "TrustedInstaller"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "update-bits",
+          "description": "Background Intelligent Transfer Service — disabled",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "BITS"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "search-wsearch",
+          "description": "Windows Search (indexing)",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "WSearch"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "store-wsaifabricsvc",
+          "description": "WSAIFabricSvc",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "WSAIFabricSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "store-appxsvc",
+          "description": "AppX Deployment Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "AppXSVC"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "store-clipsvc",
+          "description": "Client License Service (ClipSVC)",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "ClipSVC"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "store-install",
+          "description": "Microsoft Store Install Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "InstallService"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "account-signin-assistant",
+          "description": "Microsoft Account Sign-in Assistant — disabled",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "wlidsvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "account-passport",
+          "description": "Microsoft Passport — disabled",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "NgcSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "account-passport-container",
+          "description": "Microsoft Passport Container — disabled",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "NgcCtnrSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "print-spooler",
+          "description": "Print Spooler — disable if no printer is attached",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "Spooler"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "geolocation",
+          "description": "Geolocation Service — disabled",
+          "enabled": false,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "lfsvc"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "remote-rasman",
+          "description": "Remote Access Connection Manager",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "RasMan"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "remote-ics",
+          "description": "Internet Connection Sharing (ICS)",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "SharedAccess"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "remote-sstp",
+          "description": "Secure Socket Tunneling Protocol Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "SstpSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "phone-svc",
+          "description": "Phone Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "PhoneSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "ssdp-discovery",
+          "description": "SSDP Discovery",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "SSDPSRV"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "ssdp-fdrespub",
+          "description": "Function Discovery Resource Publication",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "FDResPub"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "ssdp-fdphost",
+          "description": "Function Discovery Provider Host",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "fdPHost"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "compat-pcasvc",
+          "description": "Program Compatibility Assistant Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "PcaSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "compat-whs",
+          "description": "Windows Health and Optimized Experiences",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "WHS"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "compat-ias",
+          "description": "Inventory and Compatibility Appraisal",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "IAS"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "hyperv-hvhost",
+          "description": "HV Host Service — only needed on Hyper-V hosts",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "HvHost"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "vss-vss",
+          "description": "Volume Shadow Copy",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "VSS"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "id": "vss-swprv",
+          "description": "Microsoft Software Shadow Copy Provider",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "swprv"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "legacy-lmhosts",
+          "description": "TCP/IP NetBIOS Helper",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "lmhosts"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "wmi-perf-adapter",
+          "description": "WMI Performance Adapter — only needed during benchmarks",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "wmiApSrv"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "radio-rmsvc",
+          "description": "Radio Management Service",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "RmSvc"
+            }
+          ],
+          "action": "Stop"
+        },
+
+        {
+          "id": "shell-hw-detection",
+          "description": "Shell Hardware Detection (AutoPlay)",
+          "enabled": true,
+          "conditions": [
+            {
+              "field": "ServiceName",
+              "op": "eq",
+              "value": "ShellHWDetection"
+            }
+          ],
+          "action": "Stop"
+        },
+        {
+          "Id": "rule-0190",
+          "Description": "msedgewebview2",
+          "Enabled": true,
+          "Conditions": [
+            {
+              "Field": "ProcessName",
+              "Op": "eq",
+              "Value": "msedgewebview2"
+            },
+            {
+              "Field": "Publisher",
+              "Op": "eq",
+              "Value": "Microsoft Corporation"
+            }
+          ],
+          "ConditionLogic": "And",
+          "Action": "Kill"
+        },
+        {
+          "Id": "rule-0205",
+          "Description": "jusched",
+          "Enabled": true,
+          "Conditions": [
+            {
+              "Field": "ProcessName",
+              "Op": "eq",
+              "Value": "jusched"
+            },
+            {
+              "Field": "Publisher",
+              "Op": "eq",
+              "Value": "Oracle Corporation"
+            }
+          ],
+          "ConditionLogic": "And",
+          "Action": "Kill"
+        }
+
+      ],
+
+      "protected": [
+        "wuauserv", "WinDefend", "lsass", "mpssvc", "EventLog", "RpcSs", "DcomLaunch"
+      ]
+    }
+  }
+}

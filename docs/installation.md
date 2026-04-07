@@ -19,7 +19,7 @@ dotnet publish src/Service/SystemFitnessHelper.Service.csproj `
 
 dotnet publish src/Installer/SystemFitnessHelper.Installer.csproj `
     -c Release -r win-x64 --self-contained false `
-    -o publish/installer
+    -o publish/service
 ```
 
 Both output directories must be on the same path when you run the installer, because `sfhi install` copies all files from its own directory into the service install location (except the `sfhi` binary itself).
@@ -212,3 +212,92 @@ sc.exe query SystemFitnessHelper
 
 The specified service does not exist as an installed service.
 ```
+
+---
+
+## Log files
+
+The service writes rolling daily logs to:
+
+```
+C:\ProgramData\SystemFitnessHelper\logs\sfh-<yyyyMMdd>.log
+```
+
+- Up to **7 days** of logs are retained; older files are deleted automatically.
+- When run interactively (not as a Windows Service), log output is also written to the console.
+
+### Useful log commands
+
+Tail the current log file in PowerShell:
+
+```powershell
+Get-Content "C:\ProgramData\SystemFitnessHelper\logs\sfh-$(Get-Date -Format 'yyyyMMdd').log" -Wait
+```
+
+List all retained log files:
+
+```powershell
+Get-ChildItem "C:\ProgramData\SystemFitnessHelper\logs\"
+```
+
+---
+
+## Debugging
+
+### Service fails to start
+
+1. Check the Windows Event Log for startup errors:
+
+   ```powershell
+   Get-EventLog -LogName System -Source "Service Control Manager" -Newest 20 |
+       Where-Object { $_.Message -like '*SystemFitnessHelper*' } |
+       Format-List TimeGenerated, EntryType, Message
+   ```
+
+2. Check the service log for a fatal exception (`Service terminated unexpectedly`):
+
+   ```powershell
+   Get-Content "C:\ProgramData\SystemFitnessHelper\logs\sfh-$(Get-Date -Format 'yyyyMMdd').log"
+   ```
+
+3. Run the service executable directly (outside the SCM) to see console output:
+
+   ```powershell
+   & "C:\Program Files\SystemFitnessHelper\Service\SystemFitnessHelper.Service.exe"
+   ```
+
+   Console logging is active when not running as a Windows Service, so all errors are printed directly.
+
+### Named pipes not appearing
+
+If `sfh-command` or `sfh-events` are missing after the service starts:
+
+- Confirm the service status is `Running` (`sfhi status`).
+- Check the log for pipe server startup errors.
+- Verify no other instance is already holding the pipe:
+
+  ```powershell
+  handle.exe -a sfh-command   # requires Sysinternals Handle
+  ```
+
+### IPC / CLI returns no response
+
+- Confirm the service is running and the pipes exist (Steps 4–5 above).
+- Check that the config file exists at the path reported by `sfhi status`; a missing config causes the service to reject `sfh.config` requests with a `ConfigNotFound` error.
+- Increase log verbosity by setting `Serilog:MinimumLevel` to `Debug` in `appsettings.json` (in the install directory) and restarting the service.
+
+### Config file issues
+
+- The default config written by `sfhi install` contains an empty ruleset; the service will start but return an empty list for `sfh.list` until rules are added.
+- The service does **not** reload config automatically; restart the service after editing `rules.json`, or use the `sfh.config-save` IPC method to push changes at runtime.
+- To override the config path without reinstalling, set the environment variable before starting:
+
+  ```powershell
+  [System.Environment]::SetEnvironmentVariable("SFH_CONFIG_PATH", "D:\custom\rules.json", "Machine")
+  ```
+
+  Then restart the service.
+
+### Installer requires elevation
+
+`sfhi install` and `sfhi uninstall` require Administrator rights. If not elevated, the installer attempts to relaunch itself with `runas`. If the UAC prompt is suppressed or the relaunch fails, run the command from an already-elevated terminal.
