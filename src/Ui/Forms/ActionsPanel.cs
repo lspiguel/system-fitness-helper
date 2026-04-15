@@ -6,13 +6,15 @@ namespace SystemFitnessHelper.Ui.Forms;
 public sealed class ActionsPanel : UserControl
 {
     private readonly ServiceConnection _serviceConnection;
+    private readonly Action<string?> _setStatus;
     private readonly DataGridView _grid;
     private readonly BindingList<ActionPlanRowViewModel> _rows = new();
     private Label? _errorLabel;
 
-    public ActionsPanel(ServiceConnection serviceConnection)
+    public ActionsPanel(ServiceConnection serviceConnection, Action<string?> setStatus)
     {
         this._serviceConnection = serviceConnection;
+        this._setStatus = setStatus;
 
         this._grid = new DataGridView
         {
@@ -34,6 +36,7 @@ public sealed class ActionsPanel : UserControl
         try
         {
             ActionsResult result = await this._serviceConnection.GetActionsAsync(ruleSetName).ConfigureAwait(true);
+            this._setStatus(null);
             this._rows.Clear();
 
             foreach (ActionPlanView plan in result.Plans)
@@ -52,6 +55,7 @@ public sealed class ActionsPanel : UserControl
         }
         catch (Exception ex)
         {
+            this._setStatus(ex.Message);
             this.ShowError(ex.Message);
         }
     }
