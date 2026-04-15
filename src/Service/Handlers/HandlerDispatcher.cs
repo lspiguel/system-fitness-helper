@@ -22,6 +22,8 @@ public sealed class HandlerDispatcher
                 $"No handler registered for method '{request.Method}'.");
         }
 
+        this._logger.LogInformation("Received command '{Method}' (id={Id}).", request.Method, request.Id);
+
         try
         {
             object? result = await handler.HandleAsync(request.Params, ct).ConfigureAwait(false);
