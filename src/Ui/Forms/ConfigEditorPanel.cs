@@ -6,6 +6,7 @@ namespace SystemFitnessHelper.Ui.Forms;
 public sealed class ConfigEditorPanel : UserControl
 {
     private readonly ServiceConnection _serviceConnection;
+    private readonly Action<string?> _setStatus;
     private RuleSetsConfig? _config;
 
     private readonly ComboBox _ruleSetCombo;
@@ -19,9 +20,10 @@ public sealed class ConfigEditorPanel : UserControl
     private readonly Button _deleteRuleSetButton;
     private readonly Button _setDefaultButton;
 
-    public ConfigEditorPanel(ServiceConnection serviceConnection)
+    public ConfigEditorPanel(ServiceConnection serviceConnection, Action<string?> setStatus)
     {
         this._serviceConnection = serviceConnection;
+        this._setStatus = setStatus;
 
         // Top bar - ruleset selector
         Label editingLabel = new() { Text = "Editing ruleset:", AutoSize = true, Top = 8, Left = 5 };
@@ -88,6 +90,7 @@ public sealed class ConfigEditorPanel : UserControl
         try
         {
             this._config = (await this._serviceConnection.GetConfigAsync().ConfigureAwait(true)).Config;
+            this._setStatus(null);
             if (this._config is null)
                 return;
 
@@ -95,7 +98,7 @@ public sealed class ConfigEditorPanel : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to load config: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            this._setStatus(ex.Message);
         }
     }
 

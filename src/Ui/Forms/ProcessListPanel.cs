@@ -7,13 +7,15 @@ namespace SystemFitnessHelper.Ui.Forms;
 public sealed class ProcessListPanel : UserControl
 {
     private readonly ServiceConnection _serviceConnection;
+    private readonly Action<string?> _setStatus;
     private readonly DataGridView _grid;
     private readonly BindingList<ProcessRowViewModel> _rows = new();
     private Label? _errorLabel;
 
-    public ProcessListPanel(ServiceConnection serviceConnection)
+    public ProcessListPanel(ServiceConnection serviceConnection, Action<string?> setStatus)
     {
         this._serviceConnection = serviceConnection;
+        this._setStatus = setStatus;
 
         this._grid = new DataGridView
         {
@@ -35,6 +37,7 @@ public sealed class ProcessListPanel : UserControl
         try
         {
             ProcessListResult result = await this._serviceConnection.GetProcessListAsync(ruleSetName).ConfigureAwait(true);
+            this._setStatus(null);
             this._rows.Clear();
 
             Dictionary<int, string> matchedRules = result.Matches
@@ -62,6 +65,7 @@ public sealed class ProcessListPanel : UserControl
         }
         catch (Exception ex)
         {
+            this._setStatus(ex.Message);
             this.ShowError(ex.Message);
         }
     }

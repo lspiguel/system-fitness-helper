@@ -14,6 +14,7 @@ public sealed class MainForm : Form
     private readonly ToolStripComboBox _ruleSetCombo;
     private readonly ToolStripLabel _statusLabel;
     private readonly ToolStripStatusLabel _timestampLabel;
+    private readonly ToolStripStatusLabel _errorStatusLabel;
     private readonly ToolStripStatusLabel _activeRuleSetLabel;
 
     public MainForm(ServiceConnection serviceConnection)
@@ -41,9 +42,9 @@ public sealed class MainForm : Form
         toolStrip.Items.Add(this._statusLabel);
 
         // Tab control
-        this._processListPanel = new ProcessListPanel(serviceConnection);
-        this._actionsPanel = new ActionsPanel(serviceConnection);
-        this._configEditorPanel = new ConfigEditorPanel(serviceConnection);
+        this._processListPanel = new ProcessListPanel(serviceConnection, this.SetStatus);
+        this._actionsPanel = new ActionsPanel(serviceConnection, this.SetStatus);
+        this._configEditorPanel = new ConfigEditorPanel(serviceConnection, this.SetStatus);
 
         TabPage processesTab = new("Processes");
         processesTab.Controls.Add(this._processListPanel);
@@ -66,8 +67,10 @@ public sealed class MainForm : Form
         // Status strip
         StatusStrip statusStrip = new();
         this._timestampLabel = new ToolStripStatusLabel("Last refresh: never");
-        this._activeRuleSetLabel = new ToolStripStatusLabel(string.Empty) { Spring = true, TextAlign = ContentAlignment.MiddleRight };
+        this._errorStatusLabel = new ToolStripStatusLabel(string.Empty) { Spring = true, ForeColor = Color.Red, TextAlign = ContentAlignment.MiddleLeft };
+        this._activeRuleSetLabel = new ToolStripStatusLabel(string.Empty) { TextAlign = ContentAlignment.MiddleRight };
         statusStrip.Items.Add(this._timestampLabel);
+        statusStrip.Items.Add(this._errorStatusLabel);
         statusStrip.Items.Add(this._activeRuleSetLabel);
 
         this.Controls.Add(tabs);
@@ -79,6 +82,11 @@ public sealed class MainForm : Form
 
     private string? ActiveRuleSet =>
         this._ruleSetCombo.SelectedItem as string;
+
+    private void SetStatus(string? errorMessage)
+    {
+        this._errorStatusLabel.Text = errorMessage ?? string.Empty;
+    }
 
     private async Task RefreshAsync()
     {
@@ -97,10 +105,12 @@ public sealed class MainForm : Form
 
             this._timestampLabel.Text = $"Last refresh: {DateTime.Now:HH:mm:ss}";
             this._activeRuleSetLabel.Text = ruleSet is not null ? $"Ruleset: {ruleSet}" : string.Empty;
+            this.SetStatus(null);
         }
         catch (Exception ex)
         {
             this._statusLabel.Text = "Service not running";
+            this.SetStatus(ex.Message);
             this._processListPanel.ShowError(ex.Message);
             this._actionsPanel.ShowError(ex.Message);
         }
