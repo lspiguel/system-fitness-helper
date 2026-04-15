@@ -34,12 +34,34 @@ public sealed class ListService : IListService
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
         {
+            if (configPath is not null)
+            {
+                return new ProcessListResult(
+                    Fingerprints: [],
+                    Matches: [],
+                    ResolvedRuleSetName: null,
+                    ErrorMessage: $"Config file not found: {configPath}",
+                    ExitCode: 2);
+            }
+
+            // No config file found during auto-discovery — treat as an uninitialized installation,
+            // unless a specific ruleset was requested (which implies a config should exist).
+            if (ruleSetName is not null)
+            {
+                return new ProcessListResult(
+                    Fingerprints: [],
+                    Matches: [],
+                    ResolvedRuleSetName: null,
+                    ErrorMessage: $"No rules.json found. Cannot resolve ruleset '{ruleSetName}'.",
+                    ExitCode: 2);
+            }
+
             return new ProcessListResult(
                 Fingerprints: [],
                 Matches: [],
                 ResolvedRuleSetName: null,
-                ErrorMessage: "No rules.json found. Use --config to specify a path.",
-                ExitCode: 2);
+                ErrorMessage: null,
+                ExitCode: 0);
         }
 
         var (config, validation) = ConfigurationLoader.Load(path);

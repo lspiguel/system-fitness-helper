@@ -12,18 +12,15 @@ public sealed class ExecuteHandler : IRequestHandler
 {
     private readonly IExecuteService _executeService;
     private readonly EventPipeServer _eventPipeServer;
-    private readonly string _defaultConfigPath;
 
     public string Method => Methods.Execute;
 
     public ExecuteHandler(
         IExecuteService executeService,
-        EventPipeServer eventPipeServer,
-        IOptions<ServiceConfig> config)
+        EventPipeServer eventPipeServer)
     {
         this._executeService = executeService;
         this._eventPipeServer = eventPipeServer;
-        this._defaultConfigPath = config.Value.ConfigPath;
     }
 
     public Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct)
@@ -33,7 +30,7 @@ public sealed class ExecuteHandler : IRequestHandler
             : null;
 
         ExecuteResult result = this._executeService.Execute(
-            p?.ConfigPath ?? this._defaultConfigPath,
+            p?.ConfigPath,
             p?.RuleSetName);
 
         if (result.ExitCode != 0 && result.ResolvedRuleSetName is null && p?.RuleSetName is not null)

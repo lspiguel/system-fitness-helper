@@ -18,12 +18,23 @@ public sealed class ConfigService : IConfigService
         var path = ConfigurationLoader.DiscoverPath(configPath);
         if (path is null)
         {
+            if (configPath is not null)
+            {
+                return new ConfigResult(
+                    Config: null,
+                    AvailableRuleSetNames: [],
+                    Validation: new ValidationResult(),
+                    ErrorMessage: $"Config file not found: {configPath}",
+                    ExitCode: 2);
+            }
+
+            // No config file found during auto-discovery — treat as an uninitialized installation.
             return new ConfigResult(
                 Config: null,
                 AvailableRuleSetNames: [],
                 Validation: new ValidationResult(),
-                ErrorMessage: "No rules.json found. Use --config to specify a path.",
-                ExitCode: 2);
+                ErrorMessage: null,
+                ExitCode: 0);
         }
 
         var (config, validation) = ConfigurationLoader.Load(path);
