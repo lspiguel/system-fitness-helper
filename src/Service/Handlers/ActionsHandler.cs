@@ -9,14 +9,12 @@ namespace SystemFitnessHelper.Service.Handlers;
 public sealed class ActionsHandler : IRequestHandler
 {
     private readonly IActionsService _actionsService;
-    private readonly string _defaultConfigPath;
 
     public string Method => Methods.Actions;
 
-    public ActionsHandler(IActionsService actionsService, IOptions<ServiceConfig> config)
+    public ActionsHandler(IActionsService actionsService)
     {
         this._actionsService = actionsService;
-        this._defaultConfigPath = config.Value.ConfigPath;
     }
 
     public Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct)
@@ -26,7 +24,7 @@ public sealed class ActionsHandler : IRequestHandler
             : null;
 
         ActionsResult result = this._actionsService.GetActions(
-            p?.ConfigPath ?? this._defaultConfigPath,
+            p?.ConfigPath,
             p?.RuleSetName);
 
         if (result.ExitCode != 0 && result.ResolvedRuleSetName is null && p?.RuleSetName is not null)

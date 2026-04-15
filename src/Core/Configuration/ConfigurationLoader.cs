@@ -86,6 +86,16 @@ public static class ConfigurationLoader
             return File.Exists(explicitPath) ? explicitPath : null;
         }
 
+        var programData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "SystemFitnessHelper",
+            "rules.json");
+
+        if (File.Exists(programData))
+        {
+            return programData;
+        }
+
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "SystemFitnessHelper",
