@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10" xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6" IgnorableNamespaces="rescap desktop desktop6">
+  <Identity Name="SystemFitnessHelper" Publisher="CN=SystemFitnessHelper" Version="1.0.0.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>System Fitness Helper</DisplayName>
+    <PublisherDisplayName>SystemFitnessHelper</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+  <Applications>
+    <!-- Tray App — starts automatically on user login via startupTask -->
+    <Application Id="TrayApp" Executable="SystemFitnessHelper.TrayApp.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="System Fitness Helper Tray" Description="System Fitness Helper tray icon" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent" />
+      <Extensions>
+        <!-- Per-user autostart (replaces HKLM\Run). User can disable via Task Manager > Startup. -->
+        <desktop:Extension Category="windows.startupTask">
+          <desktop:StartupTask TaskId="SFHTrayApp" Enabled="true" DisplayName="System Fitness Helper Tray" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+    <!-- Dashboard UI -->
+    <Application Id="UI" Executable="SystemFitnessHelper.Ui.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="System Fitness Helper" Description="System Fitness Helper dashboard" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+    <!-- CLI tool — hidden from Start Menu, accessible via App Execution Alias (sfhcli.exe) -->
+    <Application Id="CLI" Executable="sfhcli.exe" EntryPoint="Windows.FullTrustApplication" AppListEntry="none">
+      <uap:VisualElements DisplayName="sfhcli" Description="System Fitness Helper CLI" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent" />
+      <Extensions>
+        <uap:Extension Category="windows.appExecutionAlias">
+          <uap:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="sfhcli.exe" />
+          </uap:AppExecutionAlias>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <!-- Windows Service — registered at package scope, runs as LocalSystem, starts automatically -->
+  <!-- NOTE: rules.json in ProgramData is NOT created by MSIX. The service must create it on first run if absent. -->
+  <Extensions>
+    <desktop6:Extension Category="windows.service">
+      <desktop6:Service Name="SystemFitnessHelper" Executable="SystemFitnessHelper.Service.exe" StartupType="auto" StartAccount="localSystem" />
+    </desktop6:Extension>
+  </Extensions>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
