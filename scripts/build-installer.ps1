@@ -109,13 +109,19 @@ Write-Host "  MSBuild: $msbuild" -ForegroundColor Green
 
 # Discover VS installation root for WapProjPath (needed for Appx targets at command line)
 if (Test-Path $vswhere) {
-    $vsInstall = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath `
-        2>$null | Select-Object -First 1
+    # -prerelease is required for VS Insiders / Preview builds
+    $vsInstall = & $vswhere -latest -requires Microsoft.Component.MSBuild -property installationPath 2>$null |
+        Select-Object -First 1
+    if (-not $vsInstall) {
+        $vsInstall = & $vswhere -latest -prerelease -property installationPath 2>$null |
+            Select-Object -First 1
+    }
 }
 if (-not $vsInstall) {
-    # Derive from msbuild.exe path: go up until we leave the MSBuild subtree
+    # Derive from msbuild.exe path — 5 levels up reaches the VS install root
+    # e.g. ..\Insiders\MSBuild\Current\Bin\amd64\MSBuild.exe -> ..\Insiders
     $vsInstall = $msbuild
-    for ($i = 0; $i -lt 6; $i++) { $vsInstall = Split-Path $vsInstall }
+    for ($i = 0; $i -lt 5; $i++) { $vsInstall = Split-Path $vsInstall }
 }
 
 $wapProjPath = ''
