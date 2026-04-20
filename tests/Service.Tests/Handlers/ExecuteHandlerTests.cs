@@ -1,7 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Ipc.Protocol;
@@ -14,9 +13,6 @@ namespace SystemFitnessHelper.Service.Tests.Handlers;
 
 public sealed class ExecuteHandlerTests
 {
-    private static IOptions<ServiceConfig> DefaultOptions() =>
-        Options.Create(new ServiceConfig { ConfigPath = @"C:\test\rules.json" });
-
     private static EventPipeServer CreateEventServer() =>
         new(NullLogger<EventPipeServer>.Instance);
 
@@ -29,7 +25,7 @@ public sealed class ExecuteHandlerTests
         Mock<IExecuteService> mock = new();
         mock.Setup(s => s.Execute(It.IsAny<string?>(), It.IsAny<string?>())).Returns(executeResult);
 
-        ExecuteHandler handler = new(mock.Object, CreateEventServer(), DefaultOptions());
+        ExecuteHandler handler = new(mock.Object, CreateEventServer());
 
         object? output = await handler.HandleAsync(null, CancellationToken.None);
 
@@ -44,7 +40,7 @@ public sealed class ExecuteHandlerTests
         Mock<IExecuteService> mock = new();
         mock.Setup(s => s.Execute(It.IsAny<string?>(), "gaming")).Returns(executeResult);
 
-        ExecuteHandler handler = new(mock.Object, CreateEventServer(), DefaultOptions());
+        ExecuteHandler handler = new(mock.Object, CreateEventServer());
         JsonElement paramsEl = JsonSerializer.SerializeToElement(new { ruleSetName = "gaming" });
 
         Func<Task> act = () => handler.HandleAsync(paramsEl, CancellationToken.None);

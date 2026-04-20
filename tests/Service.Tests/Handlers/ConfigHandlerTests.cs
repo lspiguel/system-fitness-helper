@@ -1,6 +1,5 @@
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using Moq;
 using SystemFitnessHelper.Configuration;
 using SystemFitnessHelper.Ipc.Protocol;
@@ -12,9 +11,6 @@ namespace SystemFitnessHelper.Service.Tests.Handlers;
 
 public sealed class ConfigHandlerTests
 {
-    private static IOptions<ServiceConfig> DefaultOptions() =>
-        Options.Create(new ServiceConfig { ConfigPath = @"C:\test\rules.json" });
-
     [Fact]
     public async Task HandleAsync_ValidConfig_ReturnsConfigResult()
     {
@@ -24,7 +20,7 @@ public sealed class ConfigHandlerTests
         Mock<IConfigService> mock = new();
         mock.Setup(s => s.GetConfig(It.IsAny<string?>())).Returns(result);
 
-        ConfigHandler handler = new(mock.Object, DefaultOptions());
+        ConfigHandler handler = new(mock.Object);
 
         object? output = await handler.HandleAsync(null, CancellationToken.None);
 
@@ -39,7 +35,7 @@ public sealed class ConfigHandlerTests
         Mock<IConfigService> mock = new();
         mock.Setup(s => s.GetConfig(It.IsAny<string?>())).Returns(result);
 
-        ConfigHandler handler = new(mock.Object, DefaultOptions());
+        ConfigHandler handler = new(mock.Object);
 
         Func<Task> act = () => handler.HandleAsync(null, CancellationToken.None);
 
@@ -60,7 +56,7 @@ public sealed class ConfigHandlerTests
             .Callback<string?>(p => capturedPath = p ?? string.Empty)
             .Returns(result);
 
-        ConfigHandler handler = new(mock.Object, DefaultOptions());
+        ConfigHandler handler = new(mock.Object);
 
         JsonElement paramsEl = JsonSerializer.SerializeToElement(new { configPath = @"D:\custom\rules.json" });
         await handler.HandleAsync(paramsEl, CancellationToken.None);
