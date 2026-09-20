@@ -25,7 +25,7 @@ public sealed class ExecuteHandlerTests
         Mock<IExecuteService> mock = new();
         mock.Setup(s => s.Execute(It.IsAny<string?>(), It.IsAny<string?>())).Returns(executeResult);
 
-        ExecuteHandler handler = new(mock.Object, CreateEventServer());
+        ExecuteHandler handler = new(mock.Object, CreateEventServer(), TestServiceConfig.Create());
 
         object? output = await handler.HandleAsync(null, CancellationToken.None);
 
@@ -40,7 +40,7 @@ public sealed class ExecuteHandlerTests
         Mock<IExecuteService> mock = new();
         mock.Setup(s => s.Execute(It.IsAny<string?>(), "gaming")).Returns(executeResult);
 
-        ExecuteHandler handler = new(mock.Object, CreateEventServer());
+        ExecuteHandler handler = new(mock.Object, CreateEventServer(), TestServiceConfig.Create());
         JsonElement paramsEl = JsonSerializer.SerializeToElement(new { ruleSetName = "gaming" });
 
         Func<Task> act = () => handler.HandleAsync(paramsEl, CancellationToken.None);

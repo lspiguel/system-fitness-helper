@@ -10,7 +10,7 @@ namespace SystemFitnessHelper.Service.Pipes;
 public sealed class EventPipeServer
 {
     private readonly ILogger<EventPipeServer> _logger;
-    private readonly ConcurrentDictionary<int, NamedPipeServerStream> _clients = new();
+    private readonly ConcurrentDictionary<int, Client> _clients = new();
     private int _connectionIndex;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
@@ -32,10 +32,8 @@ public sealed class EventPipeServer
         if (this._cts is not null)
             await this._cts.CancelAsync().ConfigureAwait(false);
 
-        foreach (NamedPipeServerStream client in this._clients.Values)
-        {
-            try { client.Dispose(); } catch { }
-        }
+        foreach (Client client in this._clients.Values)
+            client.Dispose();
 
         this._clients.Clear();
 
@@ -46,21 +44,47 @@ public sealed class EventPipeServer
         }
     }
 
-    public void Broadcast(JsonRpcNotification notification)
+    /// <summary>
+    /// Sends a notification to every connected client. Each client has its own write lock, so a
+    /// slow reader delays only itself and never the handler that raised the event.
+    /// </summary>
+    public async Task BroadcastAsync(JsonRpcNotification notification, CancellationToken ct = default)
     {
         string json = JsonSerializer.Serialize(notification);
-        foreach ((int key, NamedPipeServerStream client) in this._clients)
+
+        IEnumerable<Task> sends = this._clients.ToArray().Select(async pair =>
         {
+            (int key, Client client) = pair;
+
+            if (!client.Stream.IsConnected)
+            {
+                this.Remove(key);
+                return;
+            }
+
+            await client.WriteLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                PipeFraming.WriteMessageAsync(client, json).GetAwaiter().GetResult();
+                await PipeFraming.WriteMessageAsync(client.Stream, json, ct).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                this._clients.TryRemove(key, out _);
-                try { client.Dispose(); } catch { }
+                this._logger.LogDebug(ex, "Dropping event pipe client {Key} after a failed write.", key);
+                this.Remove(key);
             }
-        }
+            finally
+            {
+                client.WriteLock.Release();
+            }
+        });
+
+        await Task.WhenAll(sends).ConfigureAwait(false);
+    }
+
+    private void Remove(int key)
+    {
+        if (this._clients.TryRemove(key, out Client? client))
+            client.Dispose();
     }
 
     private async Task RunAcceptLoopAsync(CancellationToken ct)
@@ -70,34 +94,23 @@ public sealed class EventPipeServer
             NamedPipeServerStream? server = null;
             try
             {
-                server = new NamedPipeServerStream(
+                server = NamedPipeServerStreamAcl.Create(
                     PipeConstants.SfhEvents,
                     PipeDirection.Out,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    PipeOptions.Asynchronous,
+                    inBufferSize: 0,
+                    outBufferSize: 0,
+                    PipeSecurityFactory.CreateDefault());
 
                 await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
                 int index = Interlocked.Increment(ref this._connectionIndex);
-                this._clients[index] = server;
+                this._clients[index] = new Client(server);
+                server = null; // ownership transfers to the dictionary
 
-                // Monitor for disconnect on a background task
-                _ = Task.Run(async () =>
-                {
-                    byte[] buf = new byte[1];
-                    try
-                    {
-                        // Clients should not send data; any read completing means disconnect
-                        await server.ReadAsync(buf, ct).ConfigureAwait(false);
-                    }
-                    catch { }
-                    finally
-                    {
-                        this._clients.TryRemove(index, out _);
-                        try { server.Dispose(); } catch { }
-                    }
-                }, CancellationToken.None);
+                this._logger.LogDebug("Event pipe client {Index} connected.", index);
             }
             catch (OperationCanceledException)
             {
@@ -109,6 +122,32 @@ public sealed class EventPipeServer
                 this._logger.LogError(ex, "Unexpected error in event pipe accept loop.");
                 server?.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// A connected event subscriber.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no disconnect-monitor task. A previous version started one that read
+    /// from this <see cref="PipeDirection.Out"/> stream; reading a write-only stream throws
+    /// <see cref="NotSupportedException"/> immediately, so every client was torn down microseconds
+    /// after connecting and no event was ever delivered. Disconnects are detected instead by
+    /// <see cref="PipeStream.IsConnected"/> and by writes failing in
+    /// <see cref="BroadcastAsync"/>.
+    /// </remarks>
+    private sealed class Client : IDisposable
+    {
+        public Client(NamedPipeServerStream stream) => this.Stream = stream;
+
+        public NamedPipeServerStream Stream { get; }
+
+        public SemaphoreSlim WriteLock { get; } = new(1, 1);
+
+        public void Dispose()
+        {
+            try { this.Stream.Dispose(); } catch { }
+            this.WriteLock.Dispose();
         }
     }
 }

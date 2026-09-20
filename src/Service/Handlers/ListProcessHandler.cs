@@ -9,12 +9,14 @@ namespace SystemFitnessHelper.Service.Handlers;
 public sealed class ListProcessHandler : IRequestHandler
 {
     private readonly IListService _listService;
+    private readonly ServiceConfig _serviceConfig;
 
     public string Method => Methods.List;
 
-    public ListProcessHandler(IListService listService)
+    public ListProcessHandler(IListService listService, IOptions<ServiceConfig> serviceConfig)
     {
         this._listService = listService;
+        this._serviceConfig = serviceConfig.Value;
     }
 
     public Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct)
@@ -24,7 +26,7 @@ public sealed class ListProcessHandler : IRequestHandler
             : null;
 
         ProcessListResult result = this._listService.GetProcessList(
-            p?.ConfigPath,
+            p?.ConfigPath ?? this._serviceConfig.ConfigPath,
             p?.RuleSetName);
 
         if (result.ExitCode != 0 && result.ResolvedRuleSetName is null && p?.RuleSetName is not null)

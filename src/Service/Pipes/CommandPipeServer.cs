@@ -9,8 +9,12 @@ namespace SystemFitnessHelper.Service.Pipes;
 
 public sealed class CommandPipeServer
 {
+    /// <summary>Upper bound on requests handled at the same time.</summary>
+    private const int MaxConcurrentConnections = 16;
+
     private readonly HandlerDispatcher _dispatcher;
     private readonly ILogger<CommandPipeServer> _logger;
+    private readonly SemaphoreSlim _concurrency = new(MaxConcurrentConnections, MaxConcurrentConnections);
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
 
@@ -39,6 +43,11 @@ public sealed class CommandPipeServer
         }
     }
 
+    /// <summary>
+    /// Accepts connections and hands each one to its own task, so that a long-running request
+    /// (a <c>sfh.execute</c> stopping a stubborn service can take 30 s or more) does not block
+    /// every other client past its connect timeout.
+    /// </summary>
     private async Task RunAcceptLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -46,65 +55,109 @@ public sealed class CommandPipeServer
             NamedPipeServerStream? server = null;
             try
             {
-                server = new NamedPipeServerStream(
+                await this._concurrency.WaitAsync(ct).ConfigureAwait(false);
+
+                server = NamedPipeServerStreamAcl.Create(
                     PipeConstants.SfhCommand,
                     PipeDirection.InOut,
-                    maxNumberOfServerInstances: 1,
+                    NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    PipeOptions.Asynchronous,
+                    inBufferSize: 0,
+                    outBufferSize: 0,
+                    PipeSecurityFactory.CreateDefault());
 
                 await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
-                string requestJson;
-                try
-                {
-                    requestJson = await PipeFraming.ReadMessageAsync(server, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    this._logger.LogWarning(ex, "Failed to read request from client.");
-                    server.Disconnect();
-                    server.Dispose();
-                    continue;
-                }
-
-                JsonRpcRequest? request = null;
-                JsonRpcResponse response;
-
-                try
-                {
-                    request = JsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
-                }
-                catch (JsonException ex)
-                {
-                    this._logger.LogWarning(ex, "Failed to deserialize request.");
-                }
-
-                if (request is null || string.IsNullOrEmpty(request.Method))
-                {
-                    response = JsonRpcResponse.Failure(request?.Id ?? 0, JsonRpcErrorCode.ParseError, "Invalid JSON-RPC request.");
-                }
-                else
-                {
-                    response = await this._dispatcher.DispatchAsync(request, ct).ConfigureAwait(false);
-                }
-
-                string responseJson = JsonSerializer.Serialize(response);
-                await PipeFraming.WriteMessageAsync(server, responseJson, ct).ConfigureAwait(false);
-
-                server.Disconnect();
-                server.Dispose();
+                NamedPipeServerStream accepted = server;
+                server = null; // ownership transfers to the handler task
+                _ = Task.Run(() => this.HandleConnectionAsync(accepted, ct), CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
                 server?.Dispose();
+                this._concurrency.Release();
                 break;
             }
             catch (Exception ex)
             {
                 this._logger.LogError(ex, "Unexpected error in command pipe accept loop.");
                 server?.Dispose();
+                this._concurrency.Release();
             }
+        }
+    }
+
+    private async Task HandleConnectionAsync(NamedPipeServerStream server, CancellationToken ct)
+    {
+        try
+        {
+            string requestJson;
+            try
+            {
+                requestJson = await PipeFraming.ReadMessageAsync(server, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                this._logger.LogDebug(ex, "Client disconnected before sending a complete request.");
+                return;
+            }
+
+            JsonRpcRequest? request = null;
+            JsonRpcResponse response;
+
+            try
+            {
+                request = JsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
+            }
+            catch (JsonException ex)
+            {
+                this._logger.LogWarning(ex, "Failed to deserialize request.");
+            }
+
+            if (request is null || string.IsNullOrEmpty(request.Method))
+            {
+                response = JsonRpcResponse.Failure(request?.Id ?? 0, JsonRpcErrorCode.ParseError, "Invalid JSON-RPC request.");
+            }
+            else
+            {
+                response = await this._dispatcher.DispatchAsync(request, ct).ConfigureAwait(false);
+            }
+
+            string responseJson = JsonSerializer.Serialize(response);
+
+            try
+            {
+                await PipeFraming.WriteMessageAsync(server, responseJson, ct).ConfigureAwait(false);
+            }
+            catch (IOException ex)
+            {
+                // The client gave up before we answered. Routine; not worth a stack trace.
+                this._logger.LogDebug(ex, "Client disconnected before the response could be written.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Service is shutting down.
+        }
+        catch (Exception ex)
+        {
+            this._logger.LogError(ex, "Unexpected error while handling a command pipe connection.");
+        }
+        finally
+        {
+            try
+            {
+                if (server.IsConnected)
+                    server.Disconnect();
+            }
+            catch (Exception ex)
+            {
+                this._logger.LogDebug(ex, "Failed to disconnect a command pipe client.");
+            }
+
+            server.Dispose();
+            this._concurrency.Release();
         }
     }
 }

@@ -20,7 +20,7 @@ public sealed class ConfigHandlerTests
         Mock<IConfigService> mock = new();
         mock.Setup(s => s.GetConfig(It.IsAny<string?>())).Returns(result);
 
-        ConfigHandler handler = new(mock.Object);
+        ConfigHandler handler = new(mock.Object, TestServiceConfig.Create());
 
         object? output = await handler.HandleAsync(null, CancellationToken.None);
 
@@ -35,7 +35,7 @@ public sealed class ConfigHandlerTests
         Mock<IConfigService> mock = new();
         mock.Setup(s => s.GetConfig(It.IsAny<string?>())).Returns(result);
 
-        ConfigHandler handler = new(mock.Object);
+        ConfigHandler handler = new(mock.Object, TestServiceConfig.Create());
 
         Func<Task> act = () => handler.HandleAsync(null, CancellationToken.None);
 
@@ -56,7 +56,7 @@ public sealed class ConfigHandlerTests
             .Callback<string?>(p => capturedPath = p ?? string.Empty)
             .Returns(result);
 
-        ConfigHandler handler = new(mock.Object);
+        ConfigHandler handler = new(mock.Object, TestServiceConfig.Create());
 
         JsonElement paramsEl = JsonSerializer.SerializeToElement(new { configPath = @"D:\custom\rules.json" });
         await handler.HandleAsync(paramsEl, CancellationToken.None);

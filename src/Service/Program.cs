@@ -32,6 +32,13 @@ try
         {
             services.Configure<ServiceConfig>(context.Configuration.GetSection("ServiceConfig"));
 
+            // Documented override; takes precedence over appsettings.json.
+            string? configPathOverride = Environment.GetEnvironmentVariable("SFH_CONFIG_PATH");
+            if (!string.IsNullOrWhiteSpace(configPathOverride))
+                services.Configure<ServiceConfig>(c => c.ConfigPath = configPathOverride);
+
+            services.PostConfigure<ServiceConfig>(c => c.Resolve());
+
             // Core services
             services.AddSingleton<IProcessScanner, WindowsProcessScanner>();
             services.AddSingleton<IRuleMatcher, RuleMatcher>();
@@ -51,10 +58,15 @@ try
             services.AddSingleton<IRequestHandler, ActionsHandler>();
             services.AddSingleton<IRequestHandler, ExecuteHandler>();
             services.AddSingleton<IRequestHandler, ConfigSaveHandler>();
+            services.AddSingleton<IRequestHandler, PingHandler>();
 
             services.AddHostedService<ServiceWorker>();
         })
         .Build();
+
+    ServiceConfig resolvedConfig = host.Services
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceConfig>>().Value;
+    Log.Information("Using rules file: {ConfigPath}", resolvedConfig.ConfigPath);
 
     host.Run();
 }

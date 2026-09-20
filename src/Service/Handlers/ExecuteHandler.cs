@@ -10,28 +10,47 @@ namespace SystemFitnessHelper.Service.Handlers;
 
 public sealed class ExecuteHandler : IRequestHandler
 {
+    /// <summary>
+    /// Serialises execution. The command pipe now handles requests concurrently, and two clients
+    /// running the action plan at once would race to stop the same services and kill the same PIDs.
+    /// </summary>
+    private static readonly SemaphoreSlim ExecuteLock = new(1, 1);
+
     private readonly IExecuteService _executeService;
     private readonly EventPipeServer _eventPipeServer;
+    private readonly ServiceConfig _serviceConfig;
 
     public string Method => Methods.Execute;
 
     public ExecuteHandler(
         IExecuteService executeService,
-        EventPipeServer eventPipeServer)
+        EventPipeServer eventPipeServer,
+        IOptions<ServiceConfig> serviceConfig)
     {
         this._executeService = executeService;
         this._eventPipeServer = eventPipeServer;
+        this._serviceConfig = serviceConfig.Value;
     }
 
-    public Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct)
+    public async Task<object?> HandleAsync(JsonElement? @params, CancellationToken ct)
     {
         ExecuteParams? p = @params.HasValue
             ? JsonSerializer.Deserialize<ExecuteParams>(@params.Value.GetRawText())
             : null;
 
-        ExecuteResult result = this._executeService.Execute(
-            p?.ConfigPath,
-            p?.RuleSetName);
+        await ExecuteLock.WaitAsync(ct).ConfigureAwait(false);
+
+        ExecuteResult result;
+        try
+        {
+            result = this._executeService.Execute(
+                p?.ConfigPath ?? this._serviceConfig.ConfigPath,
+                p?.RuleSetName);
+        }
+        finally
+        {
+            ExecuteLock.Release();
+        }
 
         if (result.ExitCode != 0 && result.ResolvedRuleSetName is null && p?.RuleSetName is not null)
             throw new JsonRpcException(JsonRpcErrorCode.RuleSetNotFound, result.ErrorMessage ?? $"RuleSet '{p.RuleSetName}' not found.");
@@ -46,9 +65,9 @@ public sealed class ExecuteHandler : IRequestHandler
                 Method = Methods.ActionExecuted,
                 Params = JsonSerializer.SerializeToElement(ActionExecutedEvent.From(actionResult)),
             };
-            this._eventPipeServer.Broadcast(notification);
+            await this._eventPipeServer.BroadcastAsync(notification, ct).ConfigureAwait(false);
         }
 
-        return Task.FromResult<object?>(result);
+        return result;
     }
 }

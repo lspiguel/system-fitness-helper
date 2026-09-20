@@ -143,7 +143,13 @@ src/Ui/
 ```
 src/Installer/
 ├── SystemFitnessHelper.Installer.csproj
-└── Program.cs                    # Sub-commands: install | start | stop | uninstall | status
+├── Program.cs                    # Argument dispatch + the five sub-commands
+├── InstallerOptions.cs           # Parsed command line (pure, unit-tested)
+├── Paths.cs                      # Every path derived from the options (pure, unit-tested)
+├── Layout.cs                     # Payload validation and recursive copy
+├── ServiceControl.cs             # SCM operations via sc.exe + ServiceController
+├── Shortcuts.cs                  # Start Menu, tray autostart, Apps & Features
+└── Elevation.cs                  # Elevation check and UAC relaunch (pure quoting helpers)
 ```
 
 ### `tests/Ipc.Tests/`
@@ -184,6 +190,31 @@ All inter-process communication uses **JSON-RPC 2.0** over **named pipes**. Ther
 |---|---|---|---|
 | Command pipe | `sfh-command` | duplex (client ↔ server) | Client sends a request, server sends one response |
 | Event pipe | `sfh-events` | server → clients (read-only for clients) | Server broadcasts notifications; no client response |
+
+#### Pipe security
+
+Both pipes are created with an explicit DACL (`PipeSecurityFactory.CreateDefault`) via
+`NamedPipeServerStreamAcl.Create`:
+
+| Principal | Rights | Why |
+|---|---|---|
+| Authenticated Users | `ReadWrite \| Synchronize` | The tray app and dashboard run as an ordinary, non-elevated user |
+| The creating account | `FullControl` | The accept loop must create a new pipe instance per connection |
+| Administrators, LocalSystem | `FullControl` | Administration and the service's own identity |
+
+This is **not optional**. Under the SCM the service runs as LocalSystem, and a pipe created with
+the default DACL is unreachable from a normal interactive user — a non-elevated client gets
+`UnauthorizedAccessException` on connect. The omission is invisible during development, where
+both ends run as the same interactive user.
+
+Authenticated Users deliberately do **not** get `CreateNewInstance`, so an ordinary user cannot
+add instances of the pipe and impersonate the service to other clients. The creating account
+does need it: without it the accept loop can create the first pipe instance but not the second,
+and the server silently degrades to serving one client at a time.
+
+**Known limitation.** Clients connect by name and do not verify the server's identity, so a
+process that wins the race before the service starts could squat the pipe name. Closing this
+means a `Global\` prefix plus a client-side check of the server's SID.
 
 #### Framing
 
@@ -254,6 +285,12 @@ Exactly one of `Result` or `Error` is non-null.
 | `sfh.actions` | `ActionsParams` | `ActionsResult` | Dry-run using `RuleSetName` (or default); returns plans and `ResolvedRuleSetName` |
 | `sfh.execute` | `ExecuteParams` | `ExecuteResult` | Executes actions using `RuleSetName` (or default); broadcasts `sfh.action.executed` per result |
 | `sfh.config.save` | `ConfigSaveParams` | `ConfigSaveResult` | Persists the entire updated `RuleSetsConfig` atomically to the config file |
+| `sfh.ping` | *(none)* | `PingResult` | Liveness probe: `Ok`, `Version`, resolved `ConfigPath`, `ConfigExists` |
+
+`sfh.ping` exists so that clients have a **cheap** health check. The tray app previously probed
+with `sfh.actions` every ten seconds — a full process enumeration plus rule match, per client,
+purely to set a boolean. Returning the resolved config path also makes a misconfigured rules file
+visible in the tray tooltip and in `sfhi status`.
 
 `ConfigPath` and `RuleSetName` in all params types are always `null` when called from the TrayApp or Ui: the service resolves its own config path (`%ProgramData%\SystemFitnessHelper\rules.json`) and uses the default ruleset. Both fields exist so that `CommandPipeClient` can optionally be used by integration tests or CLI tooling that targets an alternate config or a named ruleset.
 
@@ -293,6 +330,12 @@ Internally:
 2. `ConnectAsync(timeout: 5 s, ct)` — throws `TimeoutException` if the service is not running.
 3. Serialize the `JsonRpcRequest` (auto-incrementing client-side `Id`) and write via `PipeFraming.WriteMessageAsync`.
 4. Read the response via `PipeFraming.ReadMessageAsync`, deserialize `JsonRpcResponse`.
+
+The timeout covers the **whole call** — connect, write and read — not just the connect. Timing
+out only the connect leaves a caller hung indefinitely if the service accepts the connection and
+then stalls, which on the UI thread freezes the dashboard. The default is 30 s; `ExecuteAsync`
+passes 5 minutes, and the tray's health check passes 3 s. An `UnauthorizedAccessException` is
+rethrown with a message naming the pipe ACL as the likely cause.
 5. If `response.Error != null`, throw `JsonRpcException(error.Code, error.Message)`.
 6. Deserialize `response.Result` as `TResult` and return.
 
@@ -350,7 +393,30 @@ Host.CreateDefaultBuilder(args)
 
 When run interactively (not as a Windows Service), `UseWindowsService` is a no-op; the host runs as a console app, enabling local debugging.
 
-**Config path for the service:** The service always uses `%ProgramData%\SystemFitnessHelper\rules.json` as its config path. This path is injected as an `IOptions<ServiceConfig>` (a simple settings class with a `ConfigPath` string) sourced from `appsettings.json` in the service install directory, with an environment-variable override (`SFH_CONFIG_PATH`).
+**Config path for the service:** injected as `IOptions<ServiceConfig>` and resolved in this order:
+
+1. `SFH_CONFIG_PATH` environment variable, if set.
+2. `ServiceConfig:ConfigPath` from `appsettings.json` in the install directory, if set.
+3. The default, `%ProgramData%\SystemFitnessHelper\rules.json`, computed in C# from
+   `Environment.SpecialFolder.CommonApplicationData`.
+
+A `PostConfigure` step then calls `ServiceConfig.Resolve()`, which expands environment variables
+and makes the path absolute. **This step is essential.** The options binder stores configured
+strings verbatim, so a value such as `%ProgramData%\SystemFitnessHelper\rules.json` written
+literally into `appsettings.json` stays unexpanded — and because a Windows Service starts in
+`C:\Windows\System32`, the service would create and write a directory literally named
+`%ProgramData%` underneath it. `appsettings.json` therefore ships with no `ConfigPath` value at
+all; the C# default is already correct and absolute.
+
+**Every handler uses this path.** `ConfigHandler`, `ListProcessHandler`, `ActionsHandler`,
+`ExecuteHandler` and `ConfigSaveHandler` all resolve their target as
+`params.ConfigPath ?? serviceConfig.ConfigPath`. The read handlers previously passed
+`params.ConfigPath` straight through, which is always `null` from the tray app and dashboard, so
+the service only found the right file because `ConfigurationLoader.DiscoverPath` happens to probe
+`%ProgramData%` first. The service does not rely on that fallback.
+
+The resolved path is logged once at startup and reported by `sfh.ping`, so a misconfiguration is
+visible from `sfhi status` and the tray tooltip without reading the log.
 
 #### `ServiceWorker`
 
@@ -371,7 +437,18 @@ Owns a `CancellationTokenSource` (stopped via `StopAsync`). `StartAsync` launche
 6. `await PipeFraming.WriteMessageAsync(serverStream, Serialize(response), ct)`.
 7. `serverStream.Disconnect()`. Go to step 1 (creates a new `NamedPipeServerStream` instance for the next client).
 
-Each accepted connection is handled inline (one at a time). This is sufficient for Phase 1 where the TrayApp and UI make infrequent one-shot calls. If `ct` is cancelled, the loop exits cleanly.
+**Connections are handled concurrently.** The accept loop hands each accepted stream to its own
+task and immediately creates the next server instance, bounded by a `SemaphoreSlim` of 16
+in-flight connections. Handling connections inline instead is not sufficient: a single
+`sfh.execute` can take 30 seconds or more when a Windows service refuses to stop, and every
+other client would exceed its connect timeout and report the service as down. A client that
+disconnects before its response is written is logged at `Debug`, not `Error` — it is routine,
+not a fault.
+
+`ExecuteHandler` holds a process-wide `SemaphoreSlim(1,1)` around the action plan, so that
+concurrent callers cannot race to stop the same services and kill the same PIDs.
+
+If `ct` is cancelled, the loop exits cleanly.
 
 #### `EventPipeServer`
 
@@ -388,7 +465,17 @@ loop:
   loop
 ```
 
-`Broadcast(JsonRpcNotification notification)` serializes the notification and writes it to every connected client via `PipeFraming.WriteMessageAsync`. Clients that fail the write (disconnected) are removed from the dictionary.
+`BroadcastAsync(JsonRpcNotification notification)` serializes the notification and writes it to
+every connected client via `PipeFraming.WriteMessageAsync`. Each client carries its own write
+lock, so a slow reader delays only itself and never the handler that raised the event. Clients
+that fail the write, or whose `IsConnected` is already false, are removed and disposed.
+
+**There is deliberately no disconnect-monitor task.** An earlier version started one that read
+from the `PipeDirection.Out` client stream to detect disconnects. Reading a write-only stream
+throws `NotSupportedException` immediately; the empty `catch` swallowed it and the `finally`
+dropped the client, so every subscriber was torn down microseconds after connecting and **no
+event was ever delivered**. Disconnects are detected through `IsConnected` and failed writes
+instead.
 
 #### `HandlerDispatcher`
 
@@ -553,35 +640,96 @@ The `ComboBox` selection determines which ruleset's rules are shown in the grid.
 
 ### `src/Installer/`
 
-Console application (`net8.0-windows`). No DI; straightforward procedural code.
+Console application (`net8.0-windows`). No DI; procedural code split so that the path and
+argument logic is pure and unit-testable.
 
 ```
-sfhi install   — copies binaries, creates config directory, registers service with SCM
+sfhi install   — deploys all three components, seeds config, registers the service and shortcuts
 sfhi start     — starts the service via ServiceController
 sfhi stop      — stops the service via ServiceController
-sfhi uninstall — stops + deletes the service, optionally removes binaries
-sfhi status    — prints current service status and config file path
+sfhi uninstall — stops + deletes the service, shortcuts and registry entries
+sfhi status    — prints service status, paths, and a live health probe
 ```
 
-**`install` sub-command:**
-1. Requires elevation; if not elevated, re-launches with `runas` verb (same pattern as `ExecuteCommand`).
-2. Copies the service binary directory to `%ProgramFiles%\SystemFitnessHelper\Service\`.
-3. Creates `%ProgramData%\SystemFitnessHelper\` if it does not exist.
-4. Writes a minimal `rules.json` to `%ProgramData%\SystemFitnessHelper\rules.json` if one does not already exist, using the Phase 0.C multi-ruleset schema: `{"ruleSets":{"default":{"isDefault":true,"rules":[],"protected":[]}}}`.
-5. Runs `sc create SystemFitnessHelper binPath= "<installDir>\SystemFitnessHelper.Service.exe" start= auto DisplayName= "System Fitness Helper"` via `Process.Start`.
-6. Sets the service description via `sc description`.
-7. Prints a confirmation message with the install path and config path.
+Options: `--prefix`, `--service-name`, `--no-tray-autostart`, `--remove-files`, `--purge`.
 
-**`start` / `stop`:**
-Use `new ServiceController("SystemFitnessHelper")` with `Start()` / `Stop()` and `WaitForStatus(ServiceControllerStatus.Running/Stopped, timeout: 30s)`.
+#### Deployment layout
 
-**`uninstall` sub-command:**
-1. Stops the service if running.
-2. Runs `sc delete SystemFitnessHelper`.
-3. Optionally (with `--remove-files` flag) deletes `%ProgramFiles%\SystemFitnessHelper\`.
+The installer deploys **all three** user-facing components, not just the service. The component
+layout is a contract: `UiLauncher` resolves the dashboard as `..\Ui\SystemFitnessHelper.Ui.exe`
+relative to the tray app, so the three directories must be siblings under one root.
 
-**`status` sub-command:**
-Prints service status (`Running`, `Stopped`, `NotInstalled`), the config file path, and whether the config file exists.
+```
+%ProgramFiles%\SystemFitnessHelper\
+├── sfhi.exe + dependencies    (so Apps & Features can invoke it)
+├── rules.sample.json
+├── Service\
+├── TrayApp\
+└── Ui\
+
+%ProgramData%\SystemFitnessHelper\
+├── rules.json                 (seeded once, every rule disabled)
+└── logs\
+```
+
+`build.ps1` produces exactly this layout under `publish\`; the installer copies it wholesale.
+The whole payload is copied rather than a hand-picked file list, because `sfhi.exe` sits at the
+payload root with its own dependencies beside it.
+
+#### `install`
+
+1. Elevate if required, then **validate the payload layout before modifying anything**, so a
+   wrong working directory fails cleanly instead of half-installing.
+2. Stop the service if it is running — its binaries are otherwise locked against the copy.
+3. Copy the payload to the install root.
+4. Create `%ProgramData%\SystemFitnessHelper\` and `logs\`.
+5. Seed `rules.json` **only when absent**, from `rules.sample.json` with every rule forced to
+   `enabled: false`, so a fresh install never stops anything unreviewed.
+6. `sc create` with a **quoted** `binPath`, `start= auto`, `obj= LocalSystem`; if the service
+   already exists, `sc config` it instead of failing with 1073. Then `sc description` and
+   `sc failure` (restart/restart/none, 60 s reset).
+7. Common Start Menu shortcuts for the dashboard and the tray app.
+8. Tray autostart under `HKLM\...\CurrentVersion\Run`.
+9. Apps & Features registration under `HKLM\...\Uninstall\SystemFitnessHelper`.
+
+Shortcuts and autostart are **machine-wide** (common Start Menu, HKLM) rather than per-user:
+the installer runs elevated, so HKCU and the per-user Start Menu would land in the
+administrator's profile instead of the profile of whoever is installing.
+
+The `binPath` is double-quoted inside the `sc.exe` argument. `sc.exe` stores the value verbatim,
+so passing it bare leaves an unquoted `ImagePath` containing spaces — the classic unquoted
+service path weakness.
+
+#### `uninstall`
+
+Stops the service, deletes it (retrying past error 1072, "marked for deletion", which happens
+whenever something such as an open `services.msc` still holds a handle), then removes shortcuts,
+the Run value and the Apps & Features entry. `--remove-files` deletes the install root;
+`--purge` additionally deletes `%ProgramData%\SystemFitnessHelper`. Without `--purge`,
+configuration and logs are kept and the installer says so.
+
+#### `status`
+
+Prints the SCM state, the registered `ImagePath`, install root, config path and log directory —
+and when the service is running, sends `sfh.ping` over the command pipe and reports the version
+and the rules file the service actually resolved. A mismatch between that and the installer's
+expected config path is called out explicitly.
+
+#### Elevation
+
+`install` and `uninstall` require Administrator rights. When not elevated, the installer
+relaunches itself with the `runas` verb, **quoting each argument individually** so paths
+containing spaces survive, **waits for the child** and **returns the child's exit code**, so
+`sfhi install; if ($?) { ... }` chains correctly. The child is passed `--elevated-child` and
+holds its console open at the end, since a relaunched window otherwise closes before any output
+can be read.
+
+#### sc.exe diagnostics
+
+`sc.exe` reports its failures on **stdout**, not stderr. Both streams are drained on background
+threads (draining one to the end after `WaitForExit` can deadlock when the other fills its
+buffer) and echoed on a non-zero exit, with the common codes explained in plain English: 5
+access denied, 1060 not installed, 1072 marked for deletion, 1073 already exists.
 
 ---
 
@@ -633,7 +781,7 @@ The CLI (`sfh`) is unchanged and still discovers config via the three-step searc
 8. **`EventPipeServer`** — implement broadcast and client lifecycle; write integration test: two connected clients both receive a broadcast
 9. **`CommandPipeServer`** — implement accept-read-dispatch-write loop; write integration test: send a valid request over a real named pipe, receive the expected response
 10. **`ServiceWorker` + `Program.cs`** — wire the generic host; verify the service starts, accepts a connection, and responds when run interactively
-11. **`Installer`** — implement all five sub-commands; manually test `install` + `start` + `status` + `stop` + `uninstall` on a clean machine
+11. **`Installer`** — implement all five sub-commands; deploy all three components; verify against [installer-test-plan.md](installer-test-plan.md) on a real machine
 12. **`TrayApp` — `ServiceConnection`** — implement typed wrappers around `CommandPipeClient` + `EventPipeClient`; implement health-check timer
 13. **`TrayApp` — `TrayApplicationContext`** — implement tray icon, context menu, balloon-tip logic, service-down state
 14. **`TrayApp` — `UiLauncher`** — implement process detection and `SetForegroundWindow` P/Invoke
@@ -642,4 +790,43 @@ The CLI (`sfh`) is unchanged and still discovers config via the three-step searc
 17. **`Ui` — `ActionsPanel`** — implement data binding and blocked-row colouring; `Refresh(ruleSetName)` passes the active ruleset name
 18. **`Ui` — `ConfigEditorPanel`** — implement ruleset ComboBox, in-memory `RuleSetsConfig` editing, New/Delete/Set-as-Default ruleset buttons, rule-level Add/Edit/Delete, Save (full config), Add from Template with target ruleset picker
 19. **`Ui` — `MainForm`** — wire tabs, toolbar, async refresh, progress overlay, error state
-20. **End-to-end smoke test** — install the service; run `sfhi install && sfhi start`; open TrayApp; open the UI; run Execute from the tray; verify a balloon tip appears; open the Dashboard; verify the Processes tab, Actions tab, and Config Editor load correctly; verify `sfhi stop && sfhi uninstall` cleans up cleanly
+20. **End-to-end verification** — run the full sequence in
+    [installer-test-plan.md](installer-test-plan.md): build the payload, install, start, connect
+    from a **non-elevated** tray app and dashboard, round-trip a config save, confirm events
+    arrive on the event pipe, upgrade over the running install, and uninstall cleanly
+
+---
+
+## Known limitations
+
+Carried into a later phase rather than addressed in Phase 1:
+
+- **Pipe name squatting** — clients do not verify the server's identity; see
+  [Pipe security](#pipe-security).
+- **No icon assets** — the tray uses `SystemIcons.Application` and the Start Menu shortcuts use
+  each executable's default icon.
+- **No code signing** — neither the binaries nor the installer are signed, so SmartScreen warns
+  on first run.
+- **No automatic config reload** — the service re-reads `rules.json` per request, but a change
+  made outside `sfh.config.save` is not announced to connected clients.
+- **`sfhi` is not an MSI** — no transactional rollback and no per-machine upgrade codes. Phase 2
+  replaces it with a WiX package; see [Packaging](#packaging-stage-2--wixmsi).
+
+---
+
+## Packaging (Stage 2 — WiX/MSI)
+
+`sfhi` establishes the layout and the install semantics. Once proven, packaging moves to WiX v5
+while `sfhi` remains for development use:
+
+- `src/Package/SystemFitnessHelper.Package.wixproj` using the `WixToolset.Sdk` SDK-style project,
+  with an explicit component list generated from the `build.ps1` layout.
+- `<ServiceInstall>` / `<ServiceControl>` replace the `sc.exe` calls; `<Shortcut>` replaces the
+  COM shortcut code; `<MajorUpgrade>` replaces the hand-rolled upgrade logic; Apps & Features
+  registration becomes automatic.
+- The ProgramData config seed becomes a permanent component with `NeverOverwrite="yes"`, so
+  uninstall leaves user configuration alone unless a `PURGE=1` property is passed.
+- Code signing for both the MSI and the service binary.
+
+The layout, the config-path resolution and every service-side fix carry over unchanged; only the
+SCM, shortcut and Apps & Features plumbing inside `sfhi` is superseded.

@@ -10,6 +10,7 @@
   <Project Path="..\tests\Cli.Tests\SystemFitnessHelper.Cli.Tests.csproj" />
   <Project Path="..\tests\Ipc.Tests\SystemFitnessHelper.Ipc.Tests.csproj" />
   <Project Path="..\tests\Service.Tests\SystemFitnessHelper.Service.Tests.csproj" />
+  <Project Path="..\tests\Installer.Tests\SystemFitnessHelper.Installer.Tests.csproj" />
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
   </Folder>

@@ -9,7 +9,21 @@ public sealed class CommandPipeClient
 {
     private static int _nextId;
 
-    public async Task<TResult> SendAsync<TResult>(string method, object? @params, CancellationToken ct = default)
+    /// <summary>Applies to the whole call, not just the connect.</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Sends a JSON-RPC request and awaits its response.
+    /// </summary>
+    /// <param name="overallTimeout">
+    /// Bounds connect, write and read together. A previous version timed out only the connect, so
+    /// a service that accepted the connection but then stalled hung the calling UI thread forever.
+    /// </param>
+    public async Task<TResult> SendAsync<TResult>(
+        string method,
+        object? @params,
+        CancellationToken ct = default,
+        TimeSpan? overallTimeout = null)
     {
         int id = System.Threading.Interlocked.Increment(ref _nextId);
 
@@ -28,20 +42,29 @@ public sealed class CommandPipeClient
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
-        using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(5));
+        TimeSpan timeout = overallTimeout ?? DefaultTimeout;
+        using CancellationTokenSource timeoutCts = new(timeout);
         using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
+        string responseJson;
         try
         {
             await pipe.ConnectAsync(linkedCts.Token).ConfigureAwait(false);
+            await PipeFraming.WriteMessageAsync(pipe, requestJson, linkedCts.Token).ConfigureAwait(false);
+            responseJson = await PipeFraming.ReadMessageAsync(pipe, linkedCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            throw new TimeoutException("Could not connect to the SystemFitnessHelper service within 5 seconds.");
+            throw new TimeoutException(
+                $"No response from the SystemFitnessHelper service within {timeout.TotalSeconds:0.#} seconds.");
         }
-
-        await PipeFraming.WriteMessageAsync(pipe, requestJson, ct).ConfigureAwait(false);
-        string responseJson = await PipeFraming.ReadMessageAsync(pipe, ct).ConfigureAwait(false);
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new UnauthorizedAccessException(
+                "Access to the SystemFitnessHelper service pipe was denied. The service may be running " +
+                "with a pipe ACL that excludes the current user.",
+                ex);
+        }
 
         JsonRpcResponse? response = JsonSerializer.Deserialize<JsonRpcResponse>(responseJson)
             ?? throw new InvalidOperationException("Received null response from service.");

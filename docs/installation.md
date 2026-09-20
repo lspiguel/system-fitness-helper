@@ -1,303 +1,310 @@
-# Installation Guide — System Fitness Helper Service
+# Installation Guide — System Fitness Helper
 
 ## Prerequisites
 
 - Windows 10 / Windows Server 2016 or later
-- .NET 8.0 Runtime (Desktop + Windows)
-- Administrator privileges (required for service registration)
+- [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (the Desktop
+  runtime, not just the console one — the tray app and dashboard are Windows Forms)
+- Administrator privileges for `install` and `uninstall`
 
 ---
 
 ## Build
 
-From the repository root, publish a self-contained release of both the service and the installer:
+From the repository root:
 
 ```powershell
-dotnet publish src/Service/SystemFitnessHelper.Service.csproj `
-    -c Release -r win-x64 --self-contained false `
-    -o publish/service
-
-dotnet publish src/Installer/SystemFitnessHelper.Installer.csproj `
-    -c Release -r win-x64 --self-contained false `
-    -o publish/service
+.\build.ps1
 ```
 
-Both output directories must be on the same path when you run the installer, because `sfhi install` copies all files from its own directory into the service install location (except the `sfhi` binary itself).
+This builds the solution, runs the tests, and publishes every component into `publish\` in the
+layout the installer expects:
 
-> **Tip:** publish the installer into `publish/service` so that a single folder contains both `sfhi.exe` and `SystemFitnessHelper.Service.exe` — then run `sfhi` from there.
+```
+publish\
+├── sfhi.exe            the installer, with its dependencies
+├── rules.sample.json   seed configuration
+├── Service\            SystemFitnessHelper.Service.exe
+├── TrayApp\            SystemFitnessHelper.TrayApp.exe
+└── Ui\                 SystemFitnessHelper.Ui.exe
+```
+
+Options:
+
+| Switch | Effect |
+|---|---|
+| `-Configuration Debug` | Build Debug instead of Release |
+| `-SkipTests` | Skip the test run |
+| `-OutputDir <path>` | Publish somewhere other than `publish\` |
+
+Each component is published into its own directory. `sfhi install` copies the whole payload, so
+do not rearrange it — the tray app locates the dashboard at `..\Ui\` relative to itself.
 
 ---
 
 ## Install
 
-Open an **elevated** (Administrator) command prompt or PowerShell window.
+From an **elevated** PowerShell:
 
 ```powershell
-cd publish\service
+cd publish
 .\sfhi.exe install
 ```
 
-What this does:
+If you run it without elevation, the installer relaunches itself through UAC, waits for that
+copy to finish, and returns its exit code — so `.\sfhi.exe install; if ($?) { ... }` chains
+correctly. The elevated window waits for a keypress so you can read what it did.
 
-1. Copies all binaries from the current directory to  
-   `C:\Program Files\SystemFitnessHelper\Service\`
-2. Creates the config directory  
-   `C:\ProgramData\SystemFitnessHelper\`
-3. Writes a default `rules.json` (if one does not already exist)
-4. Registers the Windows Service with the SCM  
-   (`sc create SystemFitnessHelper binPath= "..." start= auto`)
+`install` performs these steps, in order:
+
+1. Validates the payload layout before modifying anything.
+2. Stops the service if it is already running (so an upgrade does not hit a sharing violation).
+3. Copies the payload to `C:\Program Files\SystemFitnessHelper\`.
+4. Creates `C:\ProgramData\SystemFitnessHelper\` and its `logs\` subdirectory.
+5. Writes `rules.json` **only if it does not already exist**, seeded from `rules.sample.json`
+   with every rule disabled.
+6. Registers the service with a quoted `binPath`, `start= auto`, `obj= LocalSystem`, a
+   description, and restart-on-failure actions. If the service already exists it is
+   reconfigured rather than failing.
+7. Creates Start Menu shortcuts for the dashboard and the tray app.
+8. Registers the tray app to start at sign-in for all users.
+9. Registers the product in Apps & Features.
 
 Expected output:
 
 ```
-Installing service to: C:\Program Files\SystemFitnessHelper\Service
+Installing System Fitness Helper to: C:\Program Files\SystemFitnessHelper
+  Copied Service, TrayApp, Ui and the installer
 Created default config at: C:\ProgramData\SystemFitnessHelper\rules.json
+Created Start Menu shortcuts in: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\System Fitness Helper
+Tray application registered to start for all users at sign-in.
+Registered in Apps & Features.
+
 Service 'SystemFitnessHelper' installed successfully.
-Install path: C:\Program Files\SystemFitnessHelper\Service
-Config path:  C:\ProgramData\SystemFitnessHelper\rules.json
-Run 'sfhi start' to start the service.
+  Install path: C:\Program Files\SystemFitnessHelper
+  Config path:  C:\ProgramData\SystemFitnessHelper\rules.json
+  Dashboard:    C:\Program Files\SystemFitnessHelper\Ui\SystemFitnessHelper.Ui.exe
+
+Next: sfhi start
 ```
+
+### Options
+
+| Option | Applies to | Effect |
+|---|---|---|
+| `--prefix <path>` | install, uninstall | Install root instead of `%ProgramFiles%\SystemFitnessHelper` |
+| `--service-name <name>` | all | SCM service name instead of `SystemFitnessHelper` |
+| `--no-tray-autostart` | install | Do not start the tray app at sign-in |
+| `--remove-files` | uninstall | Delete the installed binaries |
+| `--purge` | uninstall | Also delete config and logs (implies `--remove-files`) |
+
+`--prefix` and `--service-name` together let you install a second, isolated copy for testing
+without disturbing a real installation. The configuration directory is always
+`%ProgramData%\SystemFitnessHelper` regardless of prefix — it belongs to the machine, not to a
+particular copy of the binaries.
 
 ---
 
-## Start the service
+## Start and verify
 
 ```powershell
 .\sfhi.exe start
+.\sfhi.exe status
 ```
 
-Expected output:
+`status` reports the SCM state, the registered image path, and — when the service is running —
+asks the service itself over the command pipe:
 
 ```
-Service started.
+Service name:   SystemFitnessHelper
+Service status: Running
+Image path:     "C:\Program Files\SystemFitnessHelper\Service\SystemFitnessHelper.Service.exe"
+Install root:   C:\Program Files\SystemFitnessHelper (exists: True)
+Config path:    C:\ProgramData\SystemFitnessHelper\rules.json (exists: True)
+Log directory:  C:\ProgramData\SystemFitnessHelper\logs
+
+Health probe (sfh.ping):
+  Responding:  True
+  Version:     1.0.0.0
+  Rules file:  C:\ProgramData\SystemFitnessHelper\rules.json (exists: True)
 ```
+
+If the **Rules file** reported by the probe differs from the **Config path**, `status` prints a
+warning: the service is reading a different file than the installer wrote.
+
+Then start the dashboard from the Start Menu, or:
+
+```powershell
+& "C:\Program Files\SystemFitnessHelper\Ui\SystemFitnessHelper.Ui.exe"
+```
+
+The tray app starts automatically at your next sign-in; to start it now, use the Start Menu
+shortcut **System Fitness Helper Tray**.
+
+> The tray app and dashboard run as your ordinary user account while the service runs as
+> LocalSystem. That works because the service publishes its pipes with a DACL granting
+> authenticated users read/write access. If they report "service not running" while `sfhi status`
+> says Running, see [Access denied on the pipe](#access-denied-on-the-pipe).
+
+---
+
+## Upgrade
+
+Re-run `install` over an existing installation:
+
+```powershell
+.\build.ps1
+cd publish
+.\sfhi.exe install
+.\sfhi.exe start
+```
+
+The installer stops the running service, replaces the binaries, reconfigures the existing SCM
+entry, and **leaves `rules.json` untouched**.
 
 ---
 
 ## Uninstall
 
-To remove the service registration only (binaries are kept):
-
 ```powershell
-.\sfhi.exe uninstall
+.\sfhi.exe uninstall                  # remove service, shortcuts and registry entries
+.\sfhi.exe uninstall --remove-files   # also delete the installed binaries
+.\sfhi.exe uninstall --purge          # also delete config and logs
 ```
 
-To also delete the installed binaries:
+Without `--purge`, `C:\ProgramData\SystemFitnessHelper` is kept and the installer says so.
+Uninstalling also works from Apps & Features, which invokes the installed copy of `sfhi.exe`.
 
-```powershell
-.\sfhi.exe uninstall --remove-files
-```
+Close the dashboard and tray app first — a running executable under the install root blocks
+deletion of its own directory.
 
 ---
 
 ## Configuration
 
-The service reads rules from  
-`C:\ProgramData\SystemFitnessHelper\rules.json`
+The service reads and writes `C:\ProgramData\SystemFitnessHelper\rules.json`.
 
-This path can be overridden with the `SFH_CONFIG_PATH` environment variable before starting the service.
+The path is resolved in this order:
 
-The `sfhcli` tool uses the per-user path (`%APPDATA%`) by default. To point it at the service config, pass `--config "C:\ProgramData\SystemFitnessHelper\rules.json"` (or set `SFH_CONFIG_PATH`).
+1. The `SFH_CONFIG_PATH` environment variable, if set.
+2. `ServiceConfig:ConfigPath` in `appsettings.json` in the service install directory, if set.
+3. `%ProgramData%\SystemFitnessHelper\rules.json`.
 
----
-
-## Testing the installation
-
-### Step 1 — Verify the service is installed
+Whatever the source, the value has environment variables expanded and is made absolute before
+use. To override the path machine-wide:
 
 ```powershell
-.\sfhi.exe status
+[System.Environment]::SetEnvironmentVariable("SFH_CONFIG_PATH", "D:\custom\rules.json", "Machine")
+Restart-Service SystemFitnessHelper
 ```
 
-Expected output:
+Confirm it took effect with `sfhi status`, which prints the path the service actually resolved.
 
-```
-Service status: Stopped
-Config path:    C:\ProgramData\SystemFitnessHelper\rules.json
-Config exists:  True
-```
+The service does not reload the file automatically. Either restart the service after editing
+`rules.json` by hand, or edit through the dashboard's Configuration tab, which pushes changes
+over the `sfh.config.save` IPC method and takes effect immediately.
 
-You can also verify via the SCM:
-
-```powershell
-sc.exe query SystemFitnessHelper
-```
-
-### Step 2 — Start the service and confirm it is running
-
-```powershell
-.\sfhi.exe start
-.\sfhi.exe status
-```
-
-Expected `status` output:
-
-```
-Service status: Running
-Config path:    C:\ProgramData\SystemFitnessHelper\rules.json
-Config exists:  True
-```
-
-### Step 3 — Verify via Services console
-
-Open `services.msc`. Locate **System Fitness Helper** in the list.  
-The **Status** column should show **Running** and **Startup Type** should be **Automatic**.
-
-### Step 4 — Verify named pipes are open
-
-The service exposes two named pipes. Confirm they exist while the service is running:
-
-```powershell
-[System.IO.Directory]::GetFiles('\\.\pipe\') | Select-String 'sfh'
-```
-
-Expected output includes:
-
-```
-\\.\pipe\sfh-command
-\\.\pipe\sfh-events
-```
-
-### Step 5 — Send a command via the CLI
-
-Use `sfhcli` to confirm the service responds to IPC requests. The `list` command sends a `sfh.list` JSON-RPC request over the `sfh-command` pipe:
-
-```powershell
-sfhcli list --config "C:\ProgramData\SystemFitnessHelper\rules.json"
-```
-
-If the service is running and the config is valid, this returns the current process list.
-
-### Step 6 — Stop the service
-
-```powershell
-.\sfhi.exe stop
-.\sfhi.exe status
-```
-
-Expected `status` output:
-
-```
-Service status: Stopped
-Config path:    C:\ProgramData\SystemFitnessHelper\rules.json
-Config exists:  True
-```
-
-### Step 7 — Start idempotency check
-
-Run `start` twice in a row; the second call should be a no-op:
-
-```powershell
-.\sfhi.exe start
-.\sfhi.exe start
-```
-
-Expected second output:
-
-```
-Service is already running.
-```
-
-### Step 8 — Uninstall and verify removal
-
-```powershell
-.\sfhi.exe uninstall --remove-files
-sc.exe query SystemFitnessHelper
-```
-
-`sc.exe query` should return:
-
-```
-[SC] EnumQueryServicesStatus:OpenService FAILED 1060:
-
-The specified service does not exist as an installed service.
-```
+The `sfhcli` command-line tool discovers its config separately: an explicit `--config`, then
+`%ProgramData%`, then `%APPDATA%`, then `rules.json` next to the executable. It therefore picks
+up the service's configuration by default.
 
 ---
 
 ## Log files
 
-The service writes rolling daily logs to:
-
 ```
 C:\ProgramData\SystemFitnessHelper\logs\sfh-<yyyyMMdd>.log
 ```
 
-- Up to **7 days** of logs are retained; older files are deleted automatically.
-- When run interactively (not as a Windows Service), log output is also written to the console.
-
-### Useful log commands
-
-Tail the current log file in PowerShell:
+Daily rolling, 7 days retained. Console output is added when the service is run interactively
+rather than under the SCM.
 
 ```powershell
+# Tail today's log
 Get-Content "C:\ProgramData\SystemFitnessHelper\logs\sfh-$(Get-Date -Format 'yyyyMMdd').log" -Wait
+
+# Any errors at all?
+Select-String -Path "C:\ProgramData\SystemFitnessHelper\logs\*.log" -Pattern '\[ERR\]|\[FTL\]'
 ```
 
-List all retained log files:
+A healthy service logs its resolved configuration at startup:
 
-```powershell
-Get-ChildItem "C:\ProgramData\SystemFitnessHelper\logs\"
 ```
+[INF] Using rules file: C:\ProgramData\SystemFitnessHelper\rules.json
+[INF] Application started. Hosting environment: Production; Content root path: C:\Program Files\SystemFitnessHelper\Service\
+```
+
+A **Content root path** pointing into a source tree means you are looking at a development run,
+not the installed service.
 
 ---
 
-## Debugging
+## Troubleshooting
 
 ### Service fails to start
 
-1. Check the Windows Event Log for startup errors:
+```powershell
+# What did the SCM say?
+Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} -MaxEvents 20 |
+    Where-Object { $_.Message -like '*SystemFitnessHelper*' } | Format-List TimeCreated, Message
 
-   ```powershell
-   Get-EventLog -LogName System -Source "Service Control Manager" -Newest 20 |
-       Where-Object { $_.Message -like '*SystemFitnessHelper*' } |
-       Format-List TimeGenerated, EntryType, Message
-   ```
+# What did the service say?
+Get-Content "C:\ProgramData\SystemFitnessHelper\logs\sfh-$(Get-Date -Format 'yyyyMMdd').log" -Tail 40
+```
 
-2. Check the service log for a fatal exception (`Service terminated unexpectedly`):
+To see startup errors directly, run the service executable as a console application — console
+logging is enabled automatically when it is not running under the SCM:
 
-   ```powershell
-   Get-Content "C:\ProgramData\SystemFitnessHelper\logs\sfh-$(Get-Date -Format 'yyyyMMdd').log"
-   ```
+```powershell
+& "C:\Program Files\SystemFitnessHelper\Service\SystemFitnessHelper.Service.exe"
+```
 
-3. Run the service executable directly (outside the SCM) to see console output:
+Stop the Windows service first; the two cannot hold the same pipe names at once.
 
-   ```powershell
-   & "C:\Program Files\SystemFitnessHelper\Service\SystemFitnessHelper.Service.exe"
-   ```
+### Access denied on the pipe
 
-   Console logging is active when not running as a Windows Service, so all errors are printed directly.
+Symptom: `sfhi status` reports Running, but the tray app or dashboard says the service is not
+running.
 
-### Named pipes not appearing
+The service publishes `sfh-command` and `sfh-events` with a DACL granting **Authenticated Users**
+read/write, **Administrators** and **LocalSystem** full control, and the creating account full
+control. Check what is actually on the pipe:
 
-If `sfh-command` or `sfh-events` are missing after the service starts:
+```powershell
+$p = New-Object System.IO.Pipes.NamedPipeClientStream('.', 'sfh-command', 'InOut')
+try { $p.Connect(3000); "connected" } catch { $_.Exception.GetType().Name }
+```
 
-- Confirm the service status is `Running` (`sfhi status`).
-- Check the log for pipe server startup errors.
-- Verify no other instance is already holding the pipe:
+An `UnauthorizedAccessException` here means the pipe was created with a different DACL — most
+likely another build of the service, or a stale process, is holding the name. Confirm only one
+instance is running and that it came from the install directory.
 
-  ```powershell
-  handle.exe -a sfh-command   # requires Sysinternals Handle
-  ```
+### Named pipes missing
 
-### IPC / CLI returns no response
+```powershell
+[System.IO.Directory]::GetFiles('\\.\pipe\') | Where-Object { $_ -match 'sfh' }
+```
 
-- Confirm the service is running and the pipes exist (Steps 4–5 above).
-- Check that the config file exists at the path reported by `sfhi status`; a missing config causes the service to reject `sfh.config` requests with a `ConfigNotFound` error.
-- Increase log verbosity by setting `Serilog:MinimumLevel` to `Debug` in `appsettings.json` (in the install directory) and restarting the service.
+Both `sfh-command` and `sfh-events` should be listed while the service runs. If they are not,
+check the log for a pipe server startup error, and confirm no second copy of the service (for
+example one started interactively for debugging) already owns the names.
 
-### Config file issues
+### Dashboard cannot be opened from the tray
 
-- The default config written by `sfhi install` contains an empty ruleset; the service will start but return an empty list for `sfh.list` until rules are added.
-- The service does **not** reload config automatically; restart the service after editing `rules.json`, or use the `sfh.config-save` IPC method to push changes at runtime.
-- To override the config path without reinstalling, set the environment variable before starting:
+The tray app resolves the dashboard as `..\Ui\SystemFitnessHelper.Ui.exe` relative to its own
+directory. If you moved the binaries, restore the component layout under a single root:
 
-  ```powershell
-  [System.Environment]::SetEnvironmentVariable("SFH_CONFIG_PATH", "D:\custom\rules.json", "Machine")
-  ```
+```
+<install root>\TrayApp\SystemFitnessHelper.TrayApp.exe
+<install root>\Ui\SystemFitnessHelper.Ui.exe
+```
 
-  Then restart the service.
+### `sc` reports 1072, "marked for deletion"
 
-### Installer requires elevation
+Something still holds a handle to the service — usually an open `services.msc`. The installer
+retries automatically; if it still fails, close Services and re-run `uninstall`.
 
-`sfhi install` and `sfhi uninstall` require Administrator rights. If not elevated, the installer attempts to relaunch itself with `runas`. If the UAC prompt is suppressed or the relaunch fails, run the command from an already-elevated terminal.
+### Empty process list after a fresh install
+
+Expected. `install` seeds every rule **disabled** so a new installation never stops anything
+before you have reviewed it. Enable the rules you want in the dashboard's Configuration tab.

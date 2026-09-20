@@ -8,5 +8,6 @@ public static class Methods
     public const string Actions = "sfh.actions";
     public const string Execute = "sfh.execute";
     public const string ConfigSave = "sfh.config.save";
+    public const string Ping = "sfh.ping";
     public const string ActionExecuted = "sfh.action.executed";
 }
