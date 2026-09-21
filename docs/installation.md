@@ -1,5 +1,16 @@
 # Installation Guide — System Fitness Helper
 
+There are two installers, and they produce the same layout:
+
+| | Use it for | Notes |
+|---|---|---|
+| **`SystemFitnessHelper.msi`** | Installing the product | Double-click or `msiexec`. Appears in Apps & Features, upgrades in place, rolls back on failure. |
+| **`sfhi.exe`** | Development and diagnostics | No MSI toolchain needed; supports `--prefix` and `--service-name` for isolated copies. |
+
+Use the MSI unless you are working on the product itself. The two must not manage the same
+installation: `sfhi install` and `sfhi uninstall` refuse to run when an MSI installation is
+present, though `sfhi status`, `start` and `stop` always work.
+
 ## Prerequisites
 
 - Windows 10 / Windows Server 2016 or later
@@ -22,11 +33,19 @@ layout the installer expects:
 
 ```
 publish\
-├── sfhi.exe            the installer, with its dependencies
-├── rules.sample.json   seed configuration
+├── sfhi.exe            the development installer, with its dependencies
+├── rules.sample.json   seed configuration, every rule disabled
+├── runtimes\           RID-specific assemblies for sfhi.exe
 ├── Service\            SystemFitnessHelper.Service.exe
 ├── TrayApp\            SystemFitnessHelper.TrayApp.exe
 └── Ui\                 SystemFitnessHelper.Ui.exe
+```
+
+Add `-Msi` to also produce `publish\SystemFitnessHelper.msi`:
+
+```powershell
+.\build.ps1 -Msi
+.\build.ps1 -Msi -ProductVersion 1.1.0
 ```
 
 Options:
@@ -36,13 +55,60 @@ Options:
 | `-Configuration Debug` | Build Debug instead of Release |
 | `-SkipTests` | Skip the test run |
 | `-OutputDir <path>` | Publish somewhere other than `publish\` |
+| `-Msi` | Also build the MSI package (requires the payload, so it runs last) |
+| `-ProductVersion <v>` | Version stamped into both the assemblies and the MSI (default `1.0.0`) |
 
-Each component is published into its own directory. `sfhi install` copies the whole payload, so
+Each component is published into its own directory. Both installers deploy the whole payload, so
 do not rearrange it — the tray app locates the dashboard at `..\Ui\` relative to itself.
+
+`-ProductVersion` sets the assembly version and the MSI `ProductVersion` together, so the version
+`sfhi status` reports matches the one in Apps & Features. **Increment it for every release you
+intend to upgrade over**: Windows Installer only replaces an installed package when the incoming
+version is higher.
+
+The MSI project (`src/Package/`) is deliberately not in the solution. It harvests its file list
+from `publish\`, which does not exist until the solution has been built and published, so having
+`dotnet build` on the solution try to build it would be circular.
 
 ---
 
-## Install
+## Install with the MSI
+
+Double-click `SystemFitnessHelper.msi`, or from an **elevated** prompt:
+
+```powershell
+msiexec /i publish\SystemFitnessHelper.msi              # with the install wizard
+msiexec /i publish\SystemFitnessHelper.msi /qn          # silent
+msiexec /i publish\SystemFitnessHelper.msi TRAYAUTOSTART=0 /qn
+```
+
+The package is per-machine and 64-bit; it installs to `C:\Program Files\SystemFitnessHelper`,
+registers the service as LocalSystem with automatic start, starts it, creates All Users Start
+Menu shortcuts, registers tray autostart, and appears in Apps & Features.
+
+| Property | Default | Effect |
+|---|---|---|
+| `TRAYAUTOSTART` | `1` | Set to `0` to skip the machine-wide tray autostart entry |
+| `INSTALLFOLDER` | `C:\Program Files\SystemFitnessHelper` | Install location |
+
+To capture a verbose log when something goes wrong:
+
+```powershell
+msiexec /i publish\SystemFitnessHelper.msi /qn /l*v install.log
+```
+
+`msiexec` returns 0 on success and 3010 when a reboot is needed. Because Windows Installer
+transacts the whole install, a failure rolls back rather than leaving the machine half-installed.
+
+### Configuration is never destroyed
+
+`C:\ProgramData\SystemFitnessHelper\rules.json` is seeded only when absent and is marked
+permanent, so **upgrades and uninstalls both leave it alone** along with the logs beside it. To
+remove them, delete the directory by hand after uninstalling.
+
+---
+
+## Install with `sfhi` (development)
 
 From an **elevated** PowerShell:
 
@@ -150,7 +216,25 @@ shortcut **System Fitness Helper Tray**.
 
 ## Upgrade
 
-Re-run `install` over an existing installation:
+### MSI
+
+Build a **higher** version and install it over the existing one:
+
+```powershell
+.\build.ps1 -Msi -ProductVersion 1.1.0
+msiexec /i publish\SystemFitnessHelper.msi /qn
+```
+
+Windows Installer performs a major upgrade: it stops and removes the old version, installs the
+new one, and leaves a single Apps & Features entry. `rules.json` is untouched.
+
+If the incoming version is not higher than the installed one, the upgrade is refused — installing
+the same version again repairs rather than upgrades, and a lower version reports that a newer
+version is already installed.
+
+### `sfhi`
+
+Re-run `install` over an existing `sfhi` installation:
 
 ```powershell
 .\build.ps1
@@ -166,6 +250,20 @@ entry, and **leaves `rules.json` untouched**.
 
 ## Uninstall
 
+### MSI
+
+Use Apps & Features, or:
+
+```powershell
+msiexec /x publish\SystemFitnessHelper.msi /qn
+```
+
+This stops and removes the service, deletes the install directory, and removes the shortcuts and
+registry entries. Configuration and logs in `C:\ProgramData\SystemFitnessHelper` are **kept**;
+delete that directory by hand if you want them gone.
+
+### `sfhi`
+
 ```powershell
 .\sfhi.exe uninstall                  # remove service, shortcuts and registry entries
 .\sfhi.exe uninstall --remove-files   # also delete the installed binaries
@@ -173,7 +271,6 @@ entry, and **leaves `rules.json` untouched**.
 ```
 
 Without `--purge`, `C:\ProgramData\SystemFitnessHelper` is kept and the installer says so.
-Uninstalling also works from Apps & Features, which invokes the installed copy of `sfhi.exe`.
 
 Close the dashboard and tray app first — a running executable under the install root blocks
 deletion of its own directory.
@@ -298,6 +395,23 @@ directory. If you moved the binaries, restore the component layout under a singl
 <install root>\TrayApp\SystemFitnessHelper.TrayApp.exe
 <install root>\Ui\SystemFitnessHelper.Ui.exe
 ```
+
+### `sfhi install` says the machine has an MSI-managed installation
+
+Working as intended. The two installers track the product differently — Windows Installer keeps
+its own component state — so letting `sfhi` replace or delete an MSI-managed installation would
+leave the MSI's view out of step with what is on disk. Upgrade with a newer MSI, or uninstall from
+Apps & Features.
+
+`sfhi status`, `start` and `stop` are read-only or service-only and always work. To work on a
+separate copy alongside the MSI installation, pass `--service-name` and `--prefix`:
+
+```powershell
+.\sfhi.exe install --prefix C:\Temp\sfh-dev --service-name SfhDev
+```
+
+Note that the configuration directory is always `%ProgramData%\SystemFitnessHelper`, so an
+isolated copy still shares `rules.json` with the real one.
 
 ### `sc` reports 1072, "marked for deletion"
 

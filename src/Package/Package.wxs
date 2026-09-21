@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!--
+    System Fitness Helper installer.
+
+    The layout this produces is identical to the one 'sfhi install' creates, because the tray app
+    resolves the dashboard as ..\Ui\SystemFitnessHelper.Ui.exe relative to itself. See
+    docs/phase-1.md for the component layout contract.
+  -->
+  <Package
+      Name="System Fitness Helper"
+      Manufacturer="Luciano Spiguel"
+      Version="$(ProductVersion)"
+      UpgradeCode="B24817D6-FB58-49B4-85E2-D1B4F3BF4B86"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <!-- Replaces the hand-rolled stop/copy/reconfigure upgrade path in sfhi. -->
+    <MajorUpgrade
+        Schedule="afterInstallInitialize"
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first from Apps &amp; Features." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Shown in Apps & Features; the icon must be a file the package installs. -->
+    <Icon Id="AppIcon" SourceFile="$(PayloadDir)\Ui\SystemFitnessHelper.Ui.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/lspiguel/system-fitness-helper" />
+
+    <!--
+      Set TRAYAUTOSTART=0 on the command line to skip the per-machine autostart entry:
+          msiexec /i SystemFitnessHelper.msi TRAYAUTOSTART=0
+    -->
+    <Property Id="TRAYAUTOSTART" Value="1" Secure="yes" />
+
+    <Launch
+        Condition="Installed OR VersionNT &gt;= 603"
+        Message="[ProductName] requires Windows 8.1 or later." />
+
+    <Feature Id="Main" Title="System Fitness Helper" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="ServiceComponents" />
+      <ComponentGroupRef Id="TrayAppComponents" />
+      <ComponentGroupRef Id="UiComponents" />
+      <ComponentGroupRef Id="ToolComponents" />
+      <ComponentGroupRef Id="RuntimeComponents" />
+      <ComponentGroupRef Id="ConfigComponents" />
+      <ComponentGroupRef Id="RegistryComponents" />
+    </Feature>
+
+    <!-- WixUI_InstallDir gives a license page and a browsable install location.
+         It defines WIXUI_INSTALLDIR and ARPNOMODIFY itself, so we must not redeclare them. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+  </Package>
+</Wix>

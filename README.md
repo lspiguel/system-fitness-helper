@@ -10,7 +10,11 @@ The project is built in phases, starting with a simple CLI and growing into a ba
 
 ## Status
 
-Early planning stage. See [docs/plan.md](docs/plan.md) for the full design.
+Phase 1 complete: a Windows Service, a system-tray app and a dashboard, talking over JSON-RPC 2.0
+on named pipes, plus a CLI. Installed either from an MSI or with the `sfhi` development installer.
+
+See [docs/plan.md](docs/plan.md) for the full design, [docs/phase-1.md](docs/phase-1.md) for how
+the current version is built, and [docs/installation.md](docs/installation.md) to install it.
 
 ## Platform
 

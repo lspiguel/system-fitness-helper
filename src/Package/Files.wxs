@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+
+    <!--
+      File components are harvested from the published layout rather than listed by hand: the
+      three components carry ~84 files between them and the set changes with every dependency.
+      build.ps1 produces the layout; PayloadDir points at it.
+
+      Each of the three executables is declared explicitly rather than harvested, because each
+      carries something a generated component cannot: the service definition, or a Start Menu
+      shortcut. A shortcut lives in the component holding its target file so that the component
+      keypath is a per-machine file - a component mixing shortcuts with a registry keypath trips
+      ICE38, ICE43 and ICE57.
+
+      Symbols are deliberately excluded - useful next to a development build, dead weight in a
+      shipped package.
+    -->
+
+    <ComponentGroup Id="ServiceComponents" Directory="ServiceDir">
+      <Component Id="ServiceExecutable" Guid="9D279154-F3D4-408B-B586-D8A1F75C8A1C">
+        <File Id="ServiceExe"
+              Source="$(PayloadDir)\Service\SystemFitnessHelper.Service.exe"
+              KeyPath="yes" />
+
+        <!--
+          LocalSystem is required: the service stops arbitrary Windows services and kills
+          processes owned by other accounts.
+        -->
+        <ServiceInstall
+            Id="ServiceInstall"
+            Name="SystemFitnessHelper"
+            DisplayName="System Fitness Helper"
+            Description="Monitors and manages processes and services based on configurable rules."
+            Type="ownProcess"
+            Start="auto"
+            ErrorControl="normal"
+            Account="LocalSystem"
+            Vital="yes" />
+
+        <!-- Starts on install, stops on install and uninstall, removes on uninstall. -->
+        <ServiceControl
+            Id="ServiceControl"
+            Name="SystemFitnessHelper"
+            Start="install"
+            Stop="both"
+            Remove="uninstall"
+            Wait="yes" />
+      </Component>
+
+      <Files Include="$(PayloadDir)\Service\**">
+        <Exclude Files="$(PayloadDir)\Service\SystemFitnessHelper.Service.exe" />
+        <Exclude Files="$(PayloadDir)\Service\**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <ComponentGroup Id="TrayAppComponents" Directory="TrayAppDir">
+      <Component Id="TrayAppExecutable" Guid="A1F0C2E4-7B69-4D0C-9E2F-3C5A8D14B7E1">
+        <File Id="TrayAppExe"
+              Source="$(PayloadDir)\TrayApp\SystemFitnessHelper.TrayApp.exe"
+              KeyPath="yes">
+          <Shortcut Id="TrayShortcut"
+                    Directory="StartMenuDir"
+                    Name="System Fitness Helper Tray"
+                    Description="System Fitness Helper tray application"
+                    WorkingDirectory="TrayAppDir"
+                    Advertise="no" />
+        </File>
+      </Component>
+
+      <Files Include="$(PayloadDir)\TrayApp\**">
+        <Exclude Files="$(PayloadDir)\TrayApp\SystemFitnessHelper.TrayApp.exe" />
+        <Exclude Files="$(PayloadDir)\TrayApp\**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <ComponentGroup Id="UiComponents" Directory="UiDir">
+      <Component Id="UiExecutable" Guid="E7D4B913-52A8-4C6D-8F31-6B0E9A2D4C55">
+        <File Id="UiExe"
+              Source="$(PayloadDir)\Ui\SystemFitnessHelper.Ui.exe"
+              KeyPath="yes">
+          <Shortcut Id="DashboardShortcut"
+                    Directory="StartMenuDir"
+                    Name="System Fitness Helper"
+                    Description="System Fitness Helper dashboard"
+                    WorkingDirectory="UiDir"
+                    Advertise="no" />
+        </File>
+
+        <!-- Both shortcuts live in StartMenuDir; one component owns removing the folder. -->
+        <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall" />
+      </Component>
+
+      <Files Include="$(PayloadDir)\Ui\**">
+        <Exclude Files="$(PayloadDir)\Ui\SystemFitnessHelper.Ui.exe" />
+        <Exclude Files="$(PayloadDir)\Ui\**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <!--
+      sfhi.exe ships for diagnostics ('sfhi status' probes the running service over the command
+      pipe). Its install and uninstall verbs refuse to run against an MSI-managed installation -
+      see the InstalledBy marker in Registry.wxs.
+    -->
+    <ComponentGroup Id="ToolComponents" Directory="INSTALLFOLDER">
+      <Files Include="$(PayloadDir)\*">
+        <Exclude Files="$(PayloadDir)\*.pdb" />
+        <!-- Seeded into ProgramData instead; see Config.wxs. -->
+        <Exclude Files="$(PayloadDir)\rules.sample.json" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- Anchored at RuntimesDir so the runtimes\ prefix survives; see Folders.wxs. -->
+    <ComponentGroup Id="RuntimeComponents" Directory="RuntimesDir">
+      <Files Include="$(PayloadDir)\runtimes\**" />
+    </ComponentGroup>
+
+  </Fragment>
+</Wix>

@@ -84,6 +84,9 @@ internal static class Commands
     public static async Task<int> InstallAsync(
         InstallerOptions options, Paths paths, ServiceControl service, string[] args)
     {
+        if (MsiInstallation.BlocksCommand(options, "install"))
+            return 1;
+
         if (!Elevation.IsElevated())
             return Elevation.RelaunchElevated(args);
 
@@ -152,6 +155,9 @@ internal static class Commands
     public static int Uninstall(
         InstallerOptions options, Paths paths, ServiceControl service, string[] args)
     {
+        if (MsiInstallation.BlocksCommand(options, "uninstall"))
+            return 1;
+
         if (!Elevation.IsElevated())
             return Elevation.RelaunchElevated(args);
 

@@ -1,0 +1,36 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <PropertyGroup>
+    <OutputName>SystemFitnessHelper</OutputName>
+    <OutputType>Package</OutputType>
+    <!--
+      A WiX package is x86 unless told otherwise, and an x86 package installs to
+      "C:\Program Files (x86)" and has its HKLM writes redirected into WOW6432Node. The product
+      is 64-bit, and sfhi installs to the native "C:\Program Files", so the package must be x64
+      for the two installers to agree on where things live.
+    -->
+    <InstallerPlatform>x64</InstallerPlatform>
+    <!-- Overridden by build.ps1; keep in step with the assembly versions. -->
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.0</ProductVersion>
+    <!--
+      Directory holding the published component layout (Service\, TrayApp\, Ui\).
+      build.ps1 sets this; the default lets the project build straight from the repo.
+    -->
+    <PayloadDir Condition="'$(PayloadDir)' == ''">$(MSBuildProjectDirectory)\..\..\publish</PayloadDir>
+    <DefineConstants>ProductVersion=$(ProductVersion);PayloadDir=$(PayloadDir)</DefineConstants>
+    <!--
+      ICE43 and ICE57 both assume a shortcut in ProgramMenuFolder is per-user data and demand an
+      HKCU keypath. This package is Scope="perMachine", which sets ALLUSERS=1, so
+      ProgramMenuFolder resolves to the All Users Start Menu and the shortcuts are per-machine
+      data like the executables they point at. An HKCU keypath would be the actual bug here: it
+      would key per-machine component state to whichever user happened to run the install.
+      Verified empirically - see docs/installer-test-plan.md, the MSI shortcut check.
+    -->
+    <SuppressIces>ICE43;ICE57</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+</Project>

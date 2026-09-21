@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+
+    <!--
+      Install root. The three component directories must remain siblings: the tray app resolves
+      the dashboard as ..\Ui\SystemFitnessHelper.Ui.exe relative to its own location.
+    -->
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="SystemFitnessHelper">
+        <Directory Id="ServiceDir" Name="Service" />
+        <Directory Id="TrayAppDir" Name="TrayApp" />
+        <Directory Id="UiDir" Name="Ui" />
+        <!--
+          RID-specific assemblies for sfhi.exe. Declared explicitly because a Files harvest makes
+          destination paths relative to the fixed part of its Include pattern: harvesting
+          "...\runtimes\**" anchors at runtimes\ and would install win\lib\net8.0\ directly under
+          the install root. sfhi's deps.json resolves those assemblies through runtimes\, so it
+          fails to start if the prefix is lost. The three component directories are unaffected -
+          their harvest anchors one level higher, at Service\ and friends.
+        -->
+        <Directory Id="RuntimesDir" Name="runtimes" />
+      </Directory>
+    </StandardDirectory>
+
+    <!--
+      Configuration lives with the machine rather than with the binaries, so the service, the CLI
+      and any prefix-installed copy all agree on where the rules are.
+    -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="ConfigDir" Name="SystemFitnessHelper">
+        <Directory Id="LogsDir" Name="logs" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuDir" Name="System Fitness Helper" />
+    </StandardDirectory>
+
+  </Fragment>
+</Wix>

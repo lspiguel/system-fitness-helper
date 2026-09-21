@@ -1,10 +1,14 @@
 # Installer Test Plan
 
-Manual verification for `sfhi`. Every step below has been executed against a real installation;
-the notes record what each one is actually guarding against, because most of these steps exist
-because something failed there.
+Manual verification for both installers. Every step below has been executed against a real
+installation; the notes record what each one is actually guarding against, because most of these
+steps exist because something failed there.
 
-The whole sequence takes about ten minutes and leaves the machine as it found it.
+- **[`sfhi` plan](#before-you-start)** — the development installer, steps 1–16.
+- **[MSI plan](#msi-test-plan)** — the shipping package, steps M1–M13.
+
+Each sequence takes about ten minutes and leaves the machine as it found it. They are independent;
+run whichever installer you changed.
 
 ## Before you start
 
@@ -285,3 +289,183 @@ To exercise the installer without touching a real installation:
 
 Note that the configuration directory is always `%ProgramData%\SystemFitnessHelper` regardless of
 prefix, so an isolated install still shares the rules file with a real one.
+
+---
+
+# MSI Test Plan
+
+Verification for `SystemFitnessHelper.msi`. Like the `sfhi` plan above, every step exists because
+something failed there. Run it from an **elevated** prompt except where noted.
+
+Back up `C:\ProgramData\SystemFitnessHelper\rules.json` first — step M7 replaces the config
+directory to simulate a clean machine.
+
+```powershell
+.\build.ps1 -Msi
+cd publish
+```
+
+## M1. Install
+
+```powershell
+msiexec /i SystemFitnessHelper.msi /qn /l*v install.log
+```
+
+**Pass:** exit code 0 (or 3010 for reboot-required).
+
+> Because Windows Installer transacts the operation, a failure rolls back. If it does fail, the
+> verbose log is the record — search it for `Return value 3`, which marks the failing action.
+
+## M2. Installed to the 64-bit locations
+
+```powershell
+Test-Path 'C:\Program Files\SystemFitnessHelper'        # True
+Test-Path 'C:\Program Files (x86)\SystemFitnessHelper'  # False
+Test-Path 'HKLM:\SOFTWARE\WOW6432Node\SystemFitnessHelper'  # False
+Get-ChildItem 'C:\Program Files\SystemFitnessHelper' -Recurse -Filter *.pdb   # nothing
+```
+
+**Pass:** as annotated.
+
+> Guards against the package defaulting to x86, which installs under `Program Files (x86)` and has
+> its HKLM writes redirected into `WOW6432Node` — putting the MSI and `sfhi` installations in
+> different places.
+
+## M3. `runtimes\` layout preserved
+
+```powershell
+Test-Path 'C:\Program Files\SystemFitnessHelper\runtimes\win\lib\net8.0'  # True
+Test-Path 'C:\Program Files\SystemFitnessHelper\win'                      # False
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' status
+```
+
+**Pass:** the `runtimes` directory exists, there is no stray `win` directory, and `sfhi status`
+runs and reports a healthy health probe.
+
+> Guards against a `Files` harvest anchoring at `runtimes\` and flattening the prefix away.
+> `sfhi.exe` resolves RID-specific assemblies through `runtimes\` and fails to start without it.
+
+## M4. Service
+
+```powershell
+Get-CimInstance Win32_Service -Filter "Name='SystemFitnessHelper'" |
+    Select-Object State, StartMode, StartName, PathName
+```
+
+**Pass:** `Running`, `Auto`, `LocalSystem`, and a **quoted** `PathName`.
+
+## M5. All Users Start Menu
+
+```powershell
+Get-ChildItem 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\System Fitness Helper'
+Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\System Fitness Helper"
+```
+
+**Pass:** two shortcuts in the common Start Menu; the per-user path does **not** exist.
+
+> This is the empirical justification for suppressing ICE43 and ICE57. Both assume shortcuts in
+> `ProgramMenuFolder` are per-user data; with `ALLUSERS=1` they are not. If this check ever shows
+> shortcuts landing in a user profile, the suppression is wrong and must be revisited.
+
+## M6. Registry and Apps & Features
+
+```powershell
+(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').SystemFitnessHelperTray
+Get-ItemProperty 'HKLM:\SOFTWARE\SystemFitnessHelper' | Select-Object InstalledBy, InstallRoot
+Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' |
+    ForEach-Object { Get-ItemProperty $_.PSPath } |
+    Where-Object { $_.DisplayName -like '*Fitness*' } |
+    Select-Object DisplayName, DisplayVersion, WindowsInstaller
+```
+
+**Pass:** the Run value points into `TrayApp\`; `InstalledBy` is `msi`; exactly one Apps &
+Features entry with `WindowsInstaller = 1`.
+
+## M7. Fresh-machine seeding
+
+Move the config directory aside, install, and inspect what was seeded:
+
+```powershell
+Move-Item 'C:\ProgramData\SystemFitnessHelper' "$env:TEMP\sfh-stash"
+msiexec /i SystemFitnessHelper.msi /qn
+$cfg = Get-Content 'C:\ProgramData\SystemFitnessHelper\rules.json' -Raw | ConvertFrom-Json
+$cfg.ruleSets.default.rules.Count                                  # 37
+@($cfg.ruleSets.default.rules | Where-Object { $_.enabled }).Count # 0
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' status
+```
+
+**Pass:** the seed uses the **multi-ruleset** schema, carries its rules, has **none enabled**, and
+the service parses it — confirm via `sfh.config` that the service reports the same rule count with
+no validation errors.
+
+> Guards against schema drift in `docs/sample-config1.json`. It was left in the pre-0.C
+> single-ruleset shape, so every fresh install seeded a file that deserialised to zero rulesets.
+> `SampleConfigSchemaTests` now fails the build if that recurs, but this step proves it end to end.
+
+## M8. Non-elevated clients
+
+From an **ordinary** shell, launch the tray app and dashboard from the install directory.
+
+**Pass:** both connect; the tray menu items are enabled; all three dashboard tabs populate.
+
+> Same pipe-ACL check as step 7 of the `sfhi` plan, repeated because the MSI installs to a
+> different path and could in principle differ.
+
+## M9. Configuration survives an upgrade
+
+```powershell
+$before = (Get-FileHash 'C:\ProgramData\SystemFitnessHelper\rules.json').Hash
+.\build.ps1 -Msi -ProductVersion 1.1.0
+msiexec /i publish\SystemFitnessHelper.msi /qn
+(Get-FileHash 'C:\ProgramData\SystemFitnessHelper\rules.json').Hash -eq $before
+```
+
+**Pass:** `True`, one Apps & Features entry showing `1.1.0`, the service still running, and
+`sfhi status` reporting a matching assembly version.
+
+> The version check is not incidental: WiX judges itself up to date from source timestamps and
+> ignores preprocessor constants, so a package can silently carry a stale `ProductVersion`.
+> `build.ps1` forces `-t:Rebuild` to prevent it; this step confirms it worked.
+
+## M10. `TRAYAUTOSTART=0`
+
+```powershell
+msiexec /x SystemFitnessHelper.msi /qn
+msiexec /i SystemFitnessHelper.msi TRAYAUTOSTART=0 /qn
+(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -EA SilentlyContinue).SystemFitnessHelperTray
+```
+
+**Pass:** the Run value is absent, while the service and the Start Menu shortcuts are still
+installed.
+
+## M11. `sfhi` refuses to manage the MSI installation
+
+```powershell
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' install      # exit 1, explains why
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' uninstall    # exit 1, explains why
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' status       # exit 0, works normally
+& 'C:\Program Files\SystemFitnessHelper\sfhi.exe' status --service-name SfhTest   # exit 0
+```
+
+**Pass:** the two mutating verbs refuse and point at the MSI; read-only verbs work; an explicit
+`--service-name` is allowed through as an isolated installation.
+
+## M12. Uninstall
+
+```powershell
+msiexec /x SystemFitnessHelper.msi /qn
+```
+
+**Pass:** service gone, install root gone, Start Menu gone, `HKLM\SOFTWARE\SystemFitnessHelper`
+gone, Run value gone, no Apps & Features entry, no `sfh-*` pipes — and
+`C:\ProgramData\SystemFitnessHelper` **still present** with `rules.json` intact.
+
+> The config is a permanent component on purpose. An installer should not delete configuration a
+> user has invested time in.
+
+## M13. Restore
+
+```powershell
+Remove-Item 'C:\ProgramData\SystemFitnessHelper' -Recurse -Force
+Move-Item "$env:TEMP\sfh-stash" 'C:\ProgramData\SystemFitnessHelper'
+```

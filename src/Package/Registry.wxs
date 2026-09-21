@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+
+
+    <ComponentGroup Id="RegistryComponents" Directory="INSTALLFOLDER">
+
+      <!--
+        Tray autostart, machine-wide so every interactive user gets it. Suppress with
+        TRAYAUTOSTART=0 on the msiexec command line.
+      -->
+      <Component Id="TrayAutostart"
+                 Guid="BC8FE61C-1243-4F38-BE09-C5D2E3B2EC02"
+                 Condition="TRAYAUTOSTART = 1">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+                       Name="SystemFitnessHelperTray"
+                       Type="string"
+                       Value="&quot;[TrayAppDir]SystemFitnessHelper.TrayApp.exe&quot;"
+                       KeyPath="yes" />
+      </Component>
+
+      <!--
+        Marks this installation as MSI-managed. sfhi reads it and refuses to run its install and
+        uninstall verbs, which would otherwise desynchronise the MSI's view of what is installed.
+      -->
+      <Component Id="InstalledByMarker" Guid="*">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\SystemFitnessHelper"
+                       Name="InstalledBy"
+                       Type="string"
+                       Value="msi"
+                       KeyPath="yes" />
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\SystemFitnessHelper"
+                       Name="InstallRoot"
+                       Type="string"
+                       Value="[INSTALLFOLDER]" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>

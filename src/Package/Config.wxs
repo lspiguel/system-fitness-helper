@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+
+    <ComponentGroup Id="ConfigComponents">
+
+      <!--
+        Seed rules file.
+
+        NeverOverwrite keeps an existing rules.json intact across upgrades, and Permanent keeps it
+        (and the user's edits) on uninstall. An installer must not delete configuration a user has
+        spent time building; removing it is a deliberate, documented manual step.
+
+        Every rule in the seed is disabled, so a fresh installation never stops anything before
+        the user has reviewed it. build.ps1 produces rules.sample.json in that state.
+      -->
+      <Component Id="SeedConfig"
+                 Directory="ConfigDir"
+                 Guid="5B3EAEFC-6F0F-4B23-BEDA-AF59038E2D16"
+                 NeverOverwrite="yes"
+                 Permanent="yes">
+        <File Id="RulesJson"
+              Source="$(PayloadDir)\rules.sample.json"
+              Name="rules.json"
+              KeyPath="yes" />
+      </Component>
+
+      <!--
+        The service creates logs\ itself at first write; creating it here means a fresh install
+        has somewhere to write even if the first thing it does is fail.
+      -->
+      <Component Id="LogDirectory"
+                 Directory="LogsDir"
+                 Guid="120CFDA0-3633-448E-8800-4654BCC834BE"
+                 Permanent="yes"
+                 KeyPath="yes">
+        <CreateFolder />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+</Wix>

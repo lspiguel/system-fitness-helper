@@ -809,24 +809,126 @@ Carried into a later phase rather than addressed in Phase 1:
   on first run.
 - **No automatic config reload** — the service re-reads `rules.json` per request, but a change
   made outside `sfh.config.save` is not announced to connected clients.
-- **`sfhi` is not an MSI** — no transactional rollback and no per-machine upgrade codes. Phase 2
-  replaces it with a WiX package; see [Packaging](#packaging-stage-2--wixmsi).
+- **`sfhi` has no transactional rollback** — a failed `sfhi install` can leave the machine
+  half-installed, which is why it validates the payload before copying anything. The MSI does not
+  have this problem; see [Packaging](#packaging-stage-2--wixmsi). `sfhi` is now a development and
+  diagnostics tool rather than the shipping installer.
+- **The MSI cannot remove user configuration** — `rules.json` is a permanent component, so
+  uninstall always leaves it behind; there is no `PURGE` property. See
+  [Configuration](#configuration-2).
 
 ---
 
 ## Packaging (Stage 2 — WiX/MSI)
 
-`sfhi` establishes the layout and the install semantics. Once proven, packaging moves to WiX v5
-while `sfhi` remains for development use:
+`sfhi` established the layout and the install semantics; `src/Package/` packages that same layout
+as an MSI with WiX 5. Both installers remain: the MSI is what users install, `sfhi` stays for
+development and diagnostics.
 
-- `src/Package/SystemFitnessHelper.Package.wixproj` using the `WixToolset.Sdk` SDK-style project,
-  with an explicit component list generated from the `build.ps1` layout.
-- `<ServiceInstall>` / `<ServiceControl>` replace the `sc.exe` calls; `<Shortcut>` replaces the
-  COM shortcut code; `<MajorUpgrade>` replaces the hand-rolled upgrade logic; Apps & Features
-  registration becomes automatic.
-- The ProgramData config seed becomes a permanent component with `NeverOverwrite="yes"`, so
-  uninstall leaves user configuration alone unless a `PURGE=1` property is passed.
-- Code signing for both the MSI and the service binary.
+```
+src/Package/
+├── SystemFitnessHelper.Package.wixproj   # WixToolset.Sdk 5.0.2, InstallerPlatform x64
+├── Package.wxs                           # Package, MajorUpgrade, feature, UI, properties
+├── Folders.wxs                           # Directory layout
+├── Files.wxs                             # Harvested components + the three executables
+├── Config.wxs                            # ProgramData seed and logs directory
+├── Registry.wxs                          # Tray autostart, MSI marker
+└── License.rtf                           # Generated from LICENSE for the wizard
+```
 
-The layout, the config-path resolution and every service-side fix carry over unchanged; only the
-SCM, shortcut and Apps & Features plumbing inside `sfhi` is superseded.
+The project is **not** in the solution: it harvests its file list from `publish\`, which does not
+exist until the solution has been built and published, so building it from the solution would be
+circular. `build.ps1 -Msi` builds it after the payload.
+
+### What the MSI replaces
+
+| `sfhi` does by hand | The MSI uses |
+|---|---|
+| `sc create` / `sc config` | `<ServiceInstall>` |
+| `sc start` / `sc stop` / `sc delete` | `<ServiceControl>` |
+| `IShellLink` through `WScript.Shell` | `<Shortcut>` |
+| Stop, copy, reconfigure | `<MajorUpgrade>` |
+| Hand-written `Uninstall` registry key | Automatic Apps & Features registration |
+| Recursive directory copy | `<Files>` harvesting |
+
+Windows Installer also transacts the whole operation, so a failure rolls back instead of leaving
+the machine half-installed — the failure mode `sfhi` has to guard against by validating the
+payload before it copies anything.
+
+### File harvesting
+
+`<Files Include="...">` generates one component per file at build time, because the three
+components carry ~84 files between them and the set changes with every dependency. Exclusions are
+nested `<Exclude Files="..."/>` elements, not an attribute.
+
+Three things are declared explicitly rather than harvested, because a generated component cannot
+carry them: the service executable (`<ServiceInstall>`/`<ServiceControl>`) and the tray and
+dashboard executables (their Start Menu shortcuts).
+
+A harvest anchors destination paths at the fixed part of its `Include` pattern. Harvesting
+`...\Service\**` therefore preserves `runtimes\` inside the destination, but harvesting
+`...\runtimes\**` anchors *at* `runtimes\` and would install `win\lib\net8.0\` directly under the
+install root — which breaks `sfhi.exe`, whose `deps.json` resolves RID-specific assemblies
+through `runtimes\`. The root-level runtimes harvest is anchored to an explicit `RuntimesDir`
+for that reason.
+
+### Platform
+
+`InstallerPlatform` is `x64`. A WiX package is x86 unless told otherwise, and an x86 package
+installs to `C:\Program Files (x86)` and has its HKLM writes redirected into `WOW6432Node` —
+which would put the MSI and `sfhi` installations in different places.
+
+### Shortcuts and the suppressed ICEs
+
+ICE43 and ICE57 are suppressed. Both assume a shortcut in `ProgramMenuFolder` is per-user data
+and demand an HKCU keypath, but `Scope="perMachine"` sets `ALLUSERS=1`, so `ProgramMenuFolder`
+resolves to the All Users Start Menu and the shortcuts are per-machine data like the executables
+they point at. An HKCU keypath would be the actual defect: it would key per-machine component
+state to whichever user ran the install. Verified empirically — the installed shortcuts appear
+under the common Start Menu and not in any user profile.
+
+ICE38 is *not* suppressed; it was resolved properly by moving each shortcut into the component
+that holds its target file.
+
+### Configuration
+
+The seed component is `NeverOverwrite="yes"` and `Permanent="yes"`, so `rules.json` survives both
+upgrade and uninstall. An installer should not delete configuration a user has invested time in;
+removing it is a deliberate manual step.
+
+This is narrower than originally sketched: there is no `PURGE=1` property. A component condition
+is evaluated against the cached install state during uninstall, so a conditionally-installed
+removal component does not reliably fire, and the honest options were a custom action or leaving
+the data alone. `sfhi uninstall --purge` still exists for development use.
+
+`build.ps1` writes `rules.sample.json` with every rule disabled rather than leaving it to the
+installer, because the MSI copies the file verbatim and has nowhere to run logic.
+
+### Properties
+
+| Property | Default | Effect |
+|---|---|---|
+| `TRAYAUTOSTART` | `1` | `0` suppresses the machine-wide tray autostart entry |
+| `INSTALLFOLDER` | `C:\Program Files\SystemFitnessHelper` | Install location |
+
+### Guarding against mixed management
+
+The package writes `HKLM\SOFTWARE\SystemFitnessHelper\InstalledBy = "msi"`. `sfhi install` and
+`sfhi uninstall` read it and refuse, because they would otherwise desynchronise Windows
+Installer's component state from what is on disk. `status`, `start` and `stop` are unaffected, and
+an explicit `--service-name` means the caller is working on a separate installation, so those are
+allowed through.
+
+### Versioning
+
+`build.ps1 -ProductVersion` stamps the assemblies and the MSI `ProductVersion` together, so the
+version reported by `sfhi status` matches Apps & Features. The MSI step runs `-t:Rebuild`: WiX
+judges itself up to date from source timestamps alone and ignores changes to preprocessor
+constants, so an incremental build would silently stamp a stale version into a package built from
+a newer payload.
+
+### Not done
+
+**Code signing.** Neither the MSI nor the binaries are signed, so SmartScreen warns on first run.
+This needs a code-signing certificate, which the project does not have. WiX supports it through
+`SignTarget`/`SignOutput` once one exists.
