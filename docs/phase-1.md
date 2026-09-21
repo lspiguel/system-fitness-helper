@@ -806,7 +806,9 @@ Carried into a later phase rather than addressed in Phase 1:
 - **No icon assets** — the tray uses `SystemIcons.Application` and the Start Menu shortcuts use
   each executable's default icon.
 - **No code signing** — neither the binaries nor the installer are signed, so SmartScreen warns
-  on first run.
+  on first run and policy-managed environments may refuse to run the MSI at all. This is the last
+  outstanding item in Phase 1; see [Stage 3 — Code Signing](#stage-3--code-signing) for the
+  options and the steps to close it.
 - **No automatic config reload** — the service re-reads `rules.json` per request, but a change
   made outside `sfh.config.save` is not announced to connected clients.
 - **`sfhi` has no transactional rollback** — a failed `sfhi install` can leave the machine
@@ -815,7 +817,7 @@ Carried into a later phase rather than addressed in Phase 1:
   diagnostics tool rather than the shipping installer.
 - **The MSI cannot remove user configuration** — `rules.json` is a permanent component, so
   uninstall always leaves it behind; there is no `PURGE` property. See
-  [Configuration](#configuration-2).
+  [Configuration](#configuration).
 
 ---
 
@@ -929,6 +931,172 @@ a newer payload.
 
 ### Not done
 
-**Code signing.** Neither the MSI nor the binaries are signed, so SmartScreen warns on first run.
-This needs a code-signing certificate, which the project does not have. WiX supports it through
-`SignTarget`/`SignOutput` once one exists.
+**Code signing.** Nothing the project ships is signed. This is the last outstanding item in
+Phase 1; see [Stage 3 — Code Signing](#stage-3--code-signing).
+
+---
+
+## Stage 3 — Code Signing
+
+The remaining work to close Phase 1. Signing is deliberately last: it needs a certificate the
+project does not yet have, and the decision about *which* certificate is a procurement question,
+not an engineering one.
+
+### What users see today
+
+Nothing in `publish\` carries an Authenticode signature, so:
+
+- Downloading `SystemFitnessHelper.msi` from a browser triggers a SmartScreen warning attributing
+  it to an **Unknown publisher**, and running it needs "More info" → "Run anyway".
+- The UAC prompt for the MSI shows an unverified publisher.
+- Enterprise environments with WDAC or AppLocker policies that require signed installers refuse to
+  run it at all.
+
+This is the single biggest obstacle to anyone actually installing the product.
+
+### Step 1 — Choose a certificate
+
+This is the blocking decision, and the landscape changed twice recently in ways that invalidate
+most of the advice still online.
+
+| Option | Cost | Availability | SmartScreen |
+|---|---|---|---|
+| **SignPath Foundation** | Free for qualifying OSS | Worldwide | Reputation builds over time |
+| **Azure Artifact Signing** (was Trusted Signing) | ~$10/month | Orgs: US, Canada, EU, UK. **Individuals: US and Canada only** | Reputation builds over time |
+| **OV certificate** (DigiCert, Sectigo, …) | $150–300/year | Worldwide | Reputation builds over time |
+| **EV certificate** | $400+/year | Worldwide | **Same as OV — no longer an instant bypass** |
+| Self-signed | Free | — | Blocks public installation; dev and managed-enterprise only |
+
+Two things worth knowing before shopping:
+
+- **EV no longer bypasses SmartScreen.** That behaviour was removed in 2024; EV and OV now build
+  reputation identically. Paying the EV premium purely to avoid warnings is no longer justified.
+- **OV private keys must live on an HSM or hardware token.** The CA/Browser Forum has required
+  this since June 2023, so a traditional certificate means either a posted USB token or a cloud
+  HSM subscription — which is most of the reason the hosted services work out cheaper in practice.
+
+**Recommendation for this project, in order:**
+
+1. **SignPath Foundation.** This repository is MIT-licensed open source, which is exactly what the
+   programme exists for, and it is free and geography-independent. Start here; the only cost is
+   the application.
+2. **Azure Artifact Signing**, if SignPath declines. It is the cheapest paid route and integrates
+   with CI without a hardware token — but **check eligibility first**: individual developers are
+   limited to the USA and Canada, and organizations to the USA, Canada, the EU and the UK. If the
+   publisher is an individual outside the US or Canada the option is simply unavailable, and that
+   is worth confirming before spending any time on it.
+3. **An OV certificate** otherwise. It is the only option with worldwide availability, at the cost
+   of a hardware token and roughly an order of magnitude more money than SignPath.
+
+Certificates issued from March 2026 are capped at 460 days, so renewal now comes round annually
+rather than every three years. Whatever is chosen, **sign every release with the same identity** —
+reputation accumulates against the publisher, so switching certificates restarts it from zero.
+
+Microsoft Store distribution would make signing free, since Microsoft re-signs MSIX packages, but
+it is not usable here: MSIX containerisation conflicts with a LocalSystem service that stops
+arbitrary services, which is why it was rejected when packaging was chosen.
+
+### Step 2 — Get the ordering right
+
+This is the part that is easy to get wrong, and it is a property of how the MSI is built rather
+than of any certificate.
+
+The package **harvests its file list from `publish\`**. Signing the MSI therefore does not sign
+anything inside it — the payload was embedded at build time. Signing has to happen in two passes:
+
+```
+build solution
+publish components      -> publish\
+SIGN the binaries       <- pass 1, before the MSI is built
+build MSI                  embeds the now-signed binaries
+SIGN the MSI            <- pass 2, after
+```
+
+Getting this backwards produces a signed installer that drops unsigned executables on disk. The
+service, tray app and dashboard would each still trip policy checks, and the MSI would look
+perfectly fine in testing — so the test plan needs to assert it rather than assume it.
+
+### Step 3 — Sign the binaries in `build.ps1`
+
+Add a signing pass after the publish loop and before the `-Msi` block, gated on a parameter so
+that unsigned local builds remain the default:
+
+```powershell
+[string]$CertificateSubject,     # or a thumbprint, or Azure Artifact Signing metadata
+[string]$TimestampUrl = 'http://timestamp.digicert.com'
+```
+
+Sign **only the project's own assemblies** — `SystemFitnessHelper.*.exe`,
+`SystemFitnessHelper.*.dll` and `sfhi.exe`. Do not re-sign third-party dependencies such as
+Serilog: they arrive already signed by their publishers, and replacing that signature discards
+their provenance for no gain.
+
+**Timestamping is not optional.** Without an RFC 3161 timestamp every signature becomes invalid
+the moment the certificate expires, including on copies already installed on user machines. With
+one, signatures stay valid indefinitely.
+
+### Step 4 — Sign the MSI from the wixproj
+
+WiX drives this through targets that the project overrides. Set `SignOutput`, then define a
+`SignMsi` target; WiX populates `@(SignMsi)` with the built package and invokes it:
+
+```xml
+<PropertyGroup>
+  <SignOutput>true</SignOutput>
+</PropertyGroup>
+
+<Target Name="SignMsi">
+  <Exec Command="signtool sign /fd SHA256 /tr $(TimestampUrl) /td SHA256 ... @(SignMsi)" />
+</Target>
+```
+
+There is a matching `SignCabs` target for external cabinets. This package uses
+`<MediaTemplate EmbedCab="yes" />`, so there are none, `@(SignCabs)` stays empty and its target is
+skipped — signing the MSI covers the embedded cabinet.
+
+`build.ps1` already builds the package with `-t:Rebuild`, so the signing target runs on every MSI
+build rather than being skipped by an up-to-date check.
+
+### Step 5 — Keep credentials out of the repository
+
+No certificate, token PIN or Azure credential belongs in the repository or in `build.ps1`'s
+defaults. Release builds should run in CI against secrets held by the platform. Azure Artifact
+Signing and SignPath both authenticate through the pipeline rather than a file on disk, which is a
+further reason to prefer them over a USB token plugged into one developer's machine.
+
+Local developer builds stay unsigned; only release builds sign.
+
+### Step 6 — Verify, and add it to the test plan
+
+Signing is worth nothing unverified. Add to [installer-test-plan.md](installer-test-plan.md):
+
+```powershell
+# The MSI itself
+signtool verify /pa /v publish\SystemFitnessHelper.msi
+
+# Every binary the MSI installs - this is what catches a wrong-order build
+Get-ChildItem 'C:\Program Files\SystemFitnessHelper' -Recurse -Include *.exe,*.dll |
+    Where-Object { $_.Name -like 'SystemFitnessHelper.*' -or $_.Name -eq 'sfhi.exe' } |
+    ForEach-Object { signtool verify /pa /q $_.FullName; "$($_.Name): $LASTEXITCODE" }
+```
+
+**Pass:** exit code 0 for the MSI and for every one of the project's own binaries, each showing
+the expected publisher and a timestamp.
+
+Confirm the visible outcome too, since that is the entire point: the UAC prompt for the MSI should
+name a verified publisher instead of showing "Unknown".
+
+### Definition of done for Phase 1
+
+- [ ] A certificate or signing service is in place, and the publisher identity is recorded
+- [ ] `build.ps1` signs the project's own binaries **before** the MSI is built
+- [ ] The MSI is signed after it is built, with an RFC 3161 timestamp
+- [ ] Third-party assemblies keep their original signatures
+- [ ] No credential is committed; release signing runs in CI
+- [ ] `signtool verify /pa` passes on the MSI and on every installed project binary
+- [ ] The UAC prompt shows a verified publisher
+- [ ] The MSI test plan covers all of the above
+
+Reputation then builds over subsequent releases. Expect a SmartScreen warning on the first signed
+release whichever option is chosen — the fix for that is consistency over time, not a more
+expensive certificate.
